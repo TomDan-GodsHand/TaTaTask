@@ -1,5 +1,5 @@
 <Solution>
   <Project Path="TaTaTask.Models/TaTaTask.Models.csproj" />
-  <Project Path="TaTaTask/TaTaTask.Client/TaTaTask.Client.csproj" />
-  <Project Path="TaTaTask/TaTaTask/TaTaTask.csproj" />
+  <Project Path="TaTaTask.Client/TaTaTask.Client.csproj" />
+  <Project Path="TaTaTask/TaTaTask.csproj" />
 </Solution>
