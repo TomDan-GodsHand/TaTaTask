@@ -29,6 +29,9 @@ echo "==> 解压安装到 ${INSTALL_DIR}..."
 sudo mkdir -p "${INSTALL_DIR}"
 sudo tar xzf "/tmp/tatatask.tar.gz" -C "${INSTALL_DIR}"
 
+echo "==> 检查运行用户..."
+id tatatask &>/dev/null || sudo useradd -r -s /usr/sbin/nologin tatatask
+
 echo "==> 初始化 SSL 目录(首次)..."
 sudo mkdir -p "${INSTALL_DIR}/ssl"
 sudo chown tatatask:tatatask "${INSTALL_DIR}/ssl"
