@@ -366,3 +366,6 @@ FodyWeavers.xsd
 tatatask.db
 *.db-shm
 *.db-wal
+
+# SSL certificates (entire ssl/ directory should stay on the server only)
+ssl/

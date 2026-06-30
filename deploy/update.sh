@@ -29,8 +29,14 @@ echo "==> 解压安装到 ${INSTALL_DIR}..."
 sudo mkdir -p "${INSTALL_DIR}"
 sudo tar xzf "/tmp/tatatask.tar.gz" -C "${INSTALL_DIR}"
 
+echo "==> 初始化 SSL 目录(首次)..."
+sudo mkdir -p "${INSTALL_DIR}/ssl"
+sudo chown tatatask:tatatask "${INSTALL_DIR}/ssl"
+sudo chmod 700 "${INSTALL_DIR}/ssl"
+
 echo "==> 设置权限..."
 sudo chmod +x "${INSTALL_DIR}/TaTaTask"
+sudo chown -R tatatask:tatatask "${INSTALL_DIR}"
 
 echo "==> 安装 systemd 服务(首次) 或重载..."
 if [ -f "${INSTALL_DIR}/${SERVICE}" ]; then

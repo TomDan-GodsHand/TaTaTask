@@ -196,10 +196,12 @@ dotnet publish TaTaTask -c Release -r linux-x64 --self-contained -p:PublishSingl
 ```
 
 ```bash
-sudo mkdir -p /opt/tatatask
-sudo cp -r ./publish/* /opt/tatatask/
+sudo mkdir -p /opt/tatatask/ssl
+sudo cp your-cert.pfx /opt/tatatask/ssl/tatatask.pfx
 sudo useradd -r -s /usr/sbin/nologin tatatask   # 首次运行只需执行一次
 sudo chown -R tatatask:tatatask /opt/tatatask
+sudo chmod 700 /opt/tatatask/ssl
+sudo chmod 600 /opt/tatatask/ssl/tatatask.pfx
 sudo cp deploy/tatatask.service /usr/lib/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now tatatask
@@ -252,6 +254,36 @@ WantedBy=timers.target
 sudo cp update.sh /usr/local/bin/update-tatatask
 sudo systemctl enable --now tatatask-update.timer
 ```
+
+### 配置 HTTPS/SSL
+
+Kestrel 端口和证书通过 `appsettings.json` 配置（运行时生效），默认监听 HTTP:5000 + HTTPS:5001。
+
+**1. 部署证书（首次）**
+
+```bash
+# PFX 格式（推荐，含证书+私钥，单文件）
+sudo cp your-cert.pfx /opt/tatatask/ssl/tatatask.pfx
+sudo chown tatatask:tatatask /opt/tatatask/ssl/tatatask.pfx
+sudo chmod 600 /opt/tatatask/ssl/tatatask.pfx
+
+# 如果证书有密码，修改 appsettings.json:
+# "Certificate": { "Path": "ssl/tatatask.pfx", "Password": "你的密码" }
+```
+
+**2. 仅 HTTP（不需要 HTTPS）**
+
+注释掉或删除 `appsettings.json` 里的 `Https` 节点，systemd service 里取消注释 `ASPNETCORE_URLS`。
+
+**3. 仅 HTTPS（强制）**
+
+删除 `Http` 节点，只保留 `Https`。
+
+**4. 自定义端口**
+
+修改 `appsettings.json` 里的端口号，或 systemd service 里设置 `ASPNETCORE_URLS` 环境变量（优先级高于配置）。
+
+> 证书 `ssl/` 目录不在发布包中，更新不会覆盖已有证书。
 
 ### 日志
 

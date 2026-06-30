@@ -14,7 +14,10 @@ SyslogIdentifier=tatatask
 User=tatatask
 Group=tatatask
 Environment=ASPNETCORE_ENVIRONMENT=Production
-Environment=ASPNETCORE_URLS=http://0.0.0.0:5000
+EnvironmentFile=/opt/tatatask/ssl/pass.env
+# 默认使用 appsettings.json 里的 Kestrel 端口配置 (HTTP:5000 + HTTPS:5001)
+# 如需覆盖，取消下一行注释并修改
+# Environment=ASPNETCORE_URLS=http://0.0.0.0:5000
 # Logs go to the systemd journal (view: journalctl -u tatatask -f)
 StandardOutput=journal
 StandardError=journal
