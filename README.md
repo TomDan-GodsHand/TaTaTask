@@ -37,48 +37,48 @@
 ### Phase 1 — 基础设施
 
 - [x] .NET 10 Blazor Web App 项目搭建
-- [ ] EF Core + SQLite 数据层配置
-- [ ] 数据模型定义（User, TodoItem, TodoStep）
-- [ ] Cookie 认证基础设施搭建
-- [ ] MudBlazor 集成与主题配置
+- [x] EF Core + SQLite 数据层配置
+- [x] 数据模型定义（User, TodoItem, TodoStep）
+- [x] Cookie 认证基础设施搭建
+- [x] MudBlazor 集成与主题配置
 
 ### Phase 2 — 用户系统
 
-- [ ] `/register` 注册页：BCrypt 密码哈希，用户名唯一校验
-- [ ] `/login` 登录页：Cookie 认证，失败防用户枚举
-- [ ] `/` 首页：自动跳转 `/todos`（已登录）或 `/login`（未登录）
-- [ ] 登出功能
-- [ ] 用户空间隔离（所有查询带 `UserId` 过滤）
+- [x] `/register` 注册页：BCrypt 密码哈希，用户名唯一校验
+- [x] `/login` 登录页：Cookie 认证，失败防用户枚举
+- [x] `/` 首页：自动跳转 `/todos`（已登录）或 `/login`（未登录）
+- [x] 登出功能
+- [x] 用户空间隔离（所有查询带 `UserId` 过滤）
 
 ### Phase 3 — 看板核心
 
-- [ ] 看板数据模型与数据库迁移（TodoItem: Title, Description, Priority, Tags, DueDate, DueWarningHours, Status, SortOrder, CreatedAt, UpdatedAt）
-- [ ] `/todos` 看板页：5 泳道横向滚动布局 + 临期提醒条
-- [ ] 新建任务（任意泳道底部输入）
-- [ ] 任务卡片展示（标题、描述、优先级、标签徽章、截止时间着色、流转按钮）
-- [ ] 行内编辑（标题、描述、截止时间、优先级、标签、临期阈值）
-- [ ] 泳道流转按钮（状态门禁：步骤全部完成方可进已完成；冻结→解冻到未开始）
-- [ ] 删除任务（确认后硬删除）
-- [ ] 拖拽泳道间移动（受流转约束）
-- [ ] 泳道内排序（截止时间加权降序 → 优先级降序 → SortOrder 升序）
-- [ ] 临期提醒条（横向顶部通栏，阈值默认 48h 可自定义，最多 8 条，超 7 天过期自动移除）
-- [ ] 看板搜索框（标题 + 标签实时过滤，URL 参数 `?q=`）
+- [x] 看板数据模型与数据库迁移（TodoItem: Title, Description, Priority, Tags, DueDate, DueWarningHours, Status, SortOrder, CreatedAt, UpdatedAt）
+- [x] `/todos` 看板页：5 泳道横向滚动布局 + 临期提醒条
+- [x] 新建任务（任意泳道底部输入）
+- [x] 任务卡片展示（标题、描述、优先级、标签徽章、截止时间着色、流转按钮）
+- [x] 行内编辑（标题、描述、截止时间、优先级、标签、临期阈值）
+- [x] 泳道流转按钮（状态门禁：步骤全部完成方可进已完成；冻结→解冻到未开始）
+- [x] 删除任务（确认后硬删除）
+- [x] 拖拽泳道间移动（受流转约束）
+- [x] 泳道内排序（截止时间加权降序 → 优先级降序 → SortOrder 升序）
+- [x] 临期提醒条（横向顶部通栏，阈值默认 48h 可自定义，最多 8 条，超 7 天过期自动移除）
+- [x] 看板搜索框（标题 + 标签实时过滤，URL 参数 `?q=`）
 
 ### Phase 4 — 子步骤
 
-- [ ] 子步骤数据模型与迁移
-- [ ] 展开/折叠步骤列表
-- [ ] 动态增删子步骤
-- [ ] Checkbox 切换完成状态
-- [ ] 步骤完成门禁（全部完成方可流转至已完成泳道）
-- [ ] 子步骤排序
+- [x] 子步骤数据模型与迁移
+- [x] 展开/折叠步骤列表
+- [x] 动态增删子步骤
+- [x] Checkbox 切换完成状态
+- [x] 步骤完成门禁（全部完成方可流转至已完成泳道）
+- [x] 子步骤排序
 
 ### Phase 5 — 归档系统
 
-- [ ] 归档操作（仅"已完成"泳道任务，不可逆）
-- [ ] 自动归档（已完成超 7 天自动归档）
-- [ ] `/archive` 归档浏览页（按归档时间倒序）
-- [ ] 筛选：标签模糊匹配、日期范围、标题关键词搜索
+- [x] 归档操作（仅"已完成"泳道任务，不可逆）
+- [x] 自动归档（已完成超 7 天自动归档）
+- [x] `/archive` 归档浏览页（按归档时间倒序）
+- [x] 筛选：标签模糊匹配、日期范围、标题关键词搜索
 
 ### Phase 6 — 交付打磨
 
@@ -167,3 +167,31 @@ dotnet run --project TaTaTask
 ```
 
 打开 `https://localhost:7162` 即可访问。
+
+## 部署到 systemd（linux-x64）
+
+### 发布
+
+```bash
+dotnet publish TaTaTask -c Release -r linux-x64 --self-contained -o ./publish
+```
+
+### 部署
+
+```bash
+sudo mkdir -p /opt/tatatask
+sudo cp -r ./publish/* /opt/tatatask/
+sudo useradd -r -s /usr/sbin/nologin tatatask   # 首次运行只需执行一次
+sudo chown -R tatatask:tatatask /opt/tatatask
+sudo cp deploy/tatatask.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now tatatask
+```
+
+### 日志
+
+`TaTaTask` 通过 `Host.UseSystemd()` 与 systemd 集成：`Type=notify` 就绪通知、`SIGTERM` 优雅停止，日志自动对接 systemd journal（`StandardOutput=journal`）。
+
+```bash
+journalctl -u tatatask -f
+```

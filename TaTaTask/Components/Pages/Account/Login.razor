@@ -1,0 +1,74 @@
+@page "/login"
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using Microsoft.EntityFrameworkCore
+@using TaTaTask.Data
+@using TaTaTask.Models.Dtos
+@using TaTaTask.Services
+@inject AppDbContext Db
+@inject IPasswordHasher Hasher
+@inject NavigationManager Nav
+
+<PageTitle>登录</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraSmall" Class="mt-16">
+    <MudPaper Elevation="3" Class="pa-8">
+        <MudText Typo="Typo.h5" Align="Align.Center" Class="mb-6">登录 TaTaTask</MudText>
+
+        <EditForm Model="Input" OnValidSubmit="LoginUser" FormName="login" method="post">
+            <DataAnnotationsValidator />
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_error</MudAlert>
+            }
+
+            <div class="mb-3">
+                <label class="form-label">用户名</label>
+                <InputText class="form-control" @bind-Value="Input.Username" autocomplete="username" />
+                <ValidationMessage For="@(() => Input.Username)" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">密码</label>
+                <InputText type="password" class="form-control" @bind-Value="Input.Password" autocomplete="current-password" />
+                <ValidationMessage For="@(() => Input.Password)" />
+            </div>
+
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Class="mt-4">登录</MudButton>
+        </EditForm>
+
+        <MudText Align="Align.Center" Class="mt-4">
+            还没有账号？<MudLink Href="register">注册</MudLink>
+        </MudText>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm] private LoginRequest Input { get; set; } = default!;
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+    private string? _error;
+
+    protected override void OnInitialized() => Input ??= new();
+
+    private async Task LoginUser()
+    {
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Username == Input.Username);
+        if (user is null || !Hasher.Verify(Input.Password, user.PasswordHash))
+        {
+            _error = "用户名或密码错误";
+            return;
+        }
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.Username),
+        };
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+
+        Nav.NavigateTo(string.IsNullOrWhiteSpace(ReturnUrl) ? "tatatask" : ReturnUrl);
+    }
+}

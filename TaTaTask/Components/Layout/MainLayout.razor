@@ -1,23 +1,67 @@
 ﻿@inherits LayoutComponentBase
+@inject NavigationManager Nav
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+<MudThemeProvider Theme="@_theme" IsDarkMode="false" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
-
-        <article class="content px-4">
+<MudLayout>
+    <MudAppBar Elevation="0">
+            <a href="tatatask" class="d-flex align-center" style="text-decoration:none;">
+            <img src="img/logo.png" alt="TaTaTask" style="height:48px;" />
+        </a>
+        <MudSpacer />
+        <AuthorizeView>
+            <Authorized>
+                <MudButton Href="tatatask" Variant="Variant.Text"
+                           Color="@(IsActive("tatatask") ? Color.Primary : Color.Inherit)"
+                           Style="@(IsActive("tatatask") ? "font-weight:bold;" : null)"
+                           StartIcon="@Icons.Material.Filled.Dashboard" Class="mr-1">看板</MudButton>
+                <MudButton Href="archive" Variant="Variant.Text"
+                           Color="@(IsActive("archive") ? Color.Primary : Color.Inherit)"
+                           Style="@(IsActive("archive") ? "font-weight:bold;" : null)"
+                           StartIcon="@Icons.Material.Filled.Archive" Class="mr-1">归档</MudButton>
+                <MudButton Href="settings" Variant="Variant.Text"
+                           Color="@(IsActive("settings") ? Color.Primary : Color.Inherit)"
+                           Style="@(IsActive("settings") ? "font-weight:bold;" : null)"
+                           StartIcon="@Icons.Material.Filled.Settings" Class="mr-2">设置</MudButton>
+                <MudText Class="mr-3">@context.User.Identity?.Name</MudText>
+                <form action="Account/Logout" method="post">
+                    <AntiforgeryToken />
+                    <MudButton ButtonType="ButtonType.Submit" Color="Color.Inherit" Variant="Variant.Text">登出</MudButton>
+                </form>
+            </Authorized>
+            <NotAuthorized>
+                <MudLink Href="login" Color="Color.Inherit">登录</MudLink>
+            </NotAuthorized>
+        </AuthorizeView>
+    </MudAppBar>
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.False" Class="pa-4">
             @Body
-        </article>
-    </main>
-</div>
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    private readonly MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#10C8A3",
+            Secondary = "#0E9E82",
+            AppbarBackground = "#FFFFFF",
+            AppbarText = "#1B4332",
+        },
+    };
+
+    private bool IsActive(string page)
+        => new Uri(Nav.Uri).AbsolutePath.TrimEnd('/').Equals("/" + page, StringComparison.OrdinalIgnoreCase);
+}

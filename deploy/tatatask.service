@@ -1,0 +1,23 @@
+[Unit]
+Description=TaTaTask Kanban Web App
+After=network.target
+
+[Service]
+# .NET integrates with systemd via Host.UseSystemd() (Type=notify readiness + journal logging)
+Type=notify
+WorkingDirectory=/opt/tatatask
+ExecStart=/opt/tatatask/TaTaTask
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+SyslogIdentifier=tatatask
+User=tatatask
+Group=tatatask
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://0.0.0.0:5000
+# Logs go to the systemd journal (view: journalctl -u tatatask -f)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

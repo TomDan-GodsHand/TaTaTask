@@ -1,0 +1,155 @@
+@page "/settings"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using System.Reflection
+@using System.Security.Claims
+@using TaTaTask.Data
+@using TaTaTask.Models.Entities
+@using TaTaTask.Services
+@attribute [Authorize]
+@inject AppDbContext Db
+@inject IPasswordHasher Hasher
+@inject ICurrentUser Current
+
+<PageTitle>设置</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Elevation="3" Class="pa-8">
+        <MudText Typo="Typo.h5" Class="mb-6">用户设置</MudText>
+
+        @if (!string.IsNullOrEmpty(_success))
+        {
+            <MudAlert Severity="Severity.Success" Dense="true" Class="mb-4" ShowCloseIcon="true"
+                      CloseIconClicked="@(() => _success = null)">@_success</MudAlert>
+        }
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4" ShowCloseIcon="true"
+                      CloseIconClicked="@(() => _error = null)">@_error</MudAlert>
+        }
+
+        <EditForm Model="_model" OnValidSubmit="SaveSettings" FormName="settings">
+            <DataAnnotationsValidator />
+
+            <MudText Typo="Typo.subtitle1" Class="mb-3 mt-2"><b>账号信息</b></MudText>
+
+            <MudTextField @bind-Value="_model.Username" Label="用户名" Class="mb-3" Variant="Variant.Outlined" />
+
+            <MudText Typo="Typo.subtitle2" Class="mb-2">修改密码(留空不修改)</MudText>
+            <MudTextField @bind-Value="_model.CurrentPassword" Label="当前密码" InputType="InputType.Password"
+                          Class="mb-3" Variant="Variant.Outlined" />
+            <MudTextField @bind-Value="_model.NewPassword" Label="新密码" InputType="InputType.Password"
+                          Class="mb-3" Variant="Variant.Outlined" />
+            <MudTextField @bind-Value="_model.ConfirmNewPassword" Label="确认新密码" InputType="InputType.Password"
+                          Class="mb-3" Variant="Variant.Outlined" />
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.subtitle1" Class="mb-3"><b>默认值</b></MudText>
+
+            <MudNumericField @bind-Value="_model.DefaultDueWarningHours" Label="默认临期提醒(小时)" Min="0" Max="720"
+                             Class="mb-3" Variant="Variant.Outlined"
+                             HelperText="任务到期前多少小时开始提醒" />
+
+            <MudNumericField @bind-Value="_model.DefaultDueDays" Label="默认截止日期(天后)" Min="0" Max="365"
+                             Class="mb-3" Variant="Variant.Outlined"
+                             HelperText="新建任务时点击添加截止时间，默认向后推几天" />
+
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="mt-4">保存设置</MudButton>
+        </EditForm>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.caption" Align="Align.Center" Style="opacity:0.5;">TaTaTask v@_version</MudText>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private static readonly string _version =
+        Assembly.GetEntryAssembly()?
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion ?? "0.0.0";
+
+    private SettingsModel _model = new();
+    private string? _success;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uid = Current.UserId;
+        if (uid is null) return;
+
+        var user = await Db.Users.FindAsync(uid.Value);
+        if (user is null) return;
+
+        _model = new SettingsModel
+        {
+            Username = user.Username,
+            DefaultDueWarningHours = user.DefaultDueWarningHours,
+            DefaultDueDays = user.DefaultDueDays,
+        };
+    }
+
+    private async Task SaveSettings()
+    {
+        _error = null;
+        _success = null;
+
+        var uid = Current.UserId;
+        if (uid is null) return;
+
+        var user = await Db.Users.FindAsync(uid.Value);
+        if (user is null) return;
+
+        if (!string.IsNullOrWhiteSpace(_model.Username) && _model.Username != user.Username)
+        {
+            if (await Db.Users.AnyAsync(u => u.Username == _model.Username))
+            {
+                _error = "用户名已被占用";
+                return;
+            }
+            user.Username = _model.Username;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_model.NewPassword))
+        {
+            if (string.IsNullOrWhiteSpace(_model.CurrentPassword)
+                || !Hasher.Verify(_model.CurrentPassword, user.PasswordHash))
+            {
+                _error = "当前密码错误";
+                return;
+            }
+            if (_model.NewPassword != _model.ConfirmNewPassword)
+            {
+                _error = "两次输入的新密码不一致";
+                return;
+            }
+            if (_model.NewPassword.Length < 8)
+            {
+                _error = "新密码至少 8 个字符";
+                return;
+            }
+            user.PasswordHash = Hasher.Hash(_model.NewPassword);
+        }
+
+        user.DefaultDueWarningHours = _model.DefaultDueWarningHours;
+        user.DefaultDueDays = _model.DefaultDueDays;
+
+        await Db.SaveChangesAsync();
+
+        _model.CurrentPassword = string.Empty;
+        _model.NewPassword = string.Empty;
+        _model.ConfirmNewPassword = string.Empty;
+        _success = "设置已保存";
+    }
+
+    private class SettingsModel
+    {
+        public string Username { get; set; } = string.Empty;
+        public string CurrentPassword { get; set; } = string.Empty;
+        public string NewPassword { get; set; } = string.Empty;
+        public string ConfirmNewPassword { get; set; } = string.Empty;
+        public int DefaultDueWarningHours { get; set; } = 48;
+        public int DefaultDueDays { get; set; } = 3;
+    }
+}

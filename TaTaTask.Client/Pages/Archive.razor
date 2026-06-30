@@ -1,0 +1,109 @@
+@page "/archive"
+@rendermode InteractiveAuto
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using TaTaTask.Client.Services
+@using TaTaTask.Models.Dtos
+@attribute [Authorize]
+@inject ITodoService TodoService
+
+<PageTitle>归档</PageTitle>
+
+<MudPaper Class="pa-3 mb-4">
+    <div class="d-flex flex-wrap align-end" style="gap:12px;">
+        <MudTextField @bind-Value="_q" Label="标题关键词" Margin="Margin.Dense" Style="max-width:200px;" />
+        <MudTextField @bind-Value="_tag" Label="标签" Margin="Margin.Dense" Style="max-width:160px;" />
+        <div>
+            <label class="mud-input-label" style="font-size:.75rem;">起始(归档日)</label>
+            <InputDate Type="InputDateType.Date" @bind-Value="_from" class="form-control" />
+        </div>
+        <div>
+            <label class="mud-input-label" style="font-size:.75rem;">截止(归档日)</label>
+            <InputDate Type="InputDateType.Date" @bind-Value="_to" class="form-control" />
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Load">筛选</MudButton>
+        <MudButton Variant="Variant.Text" OnClick="Reset">重置</MudButton>
+    </div>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">没有符合条件的归档任务。</MudAlert>
+}
+else
+{
+    <MudSimpleTable Hover="true" Dense="true">
+        <thead>
+            <tr>
+                <th>标题</th>
+                <th>标签</th>
+                <th>优先级</th>
+                <th>完成时间</th>
+                <th>归档时间</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in _items)
+            {
+                <tr>
+                    <td>@t.Title</td>
+                    <td>@t.Tags</td>
+                    <td>@PriorityLabel(t.Priority)</td>
+                    <td>@t.DoneAt?.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>@t.ArchivedAt?.ToString("yyyy-MM-dd HH:mm")</td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+}
+
+@code {
+    private List<TodoItemDto> _items = new();
+    private string? _q;
+    private string? _tag;
+    private DateTime? _from;
+    private DateTime? _to;
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _from = DateTime.Today.AddDays(-7);
+        _to = DateTime.Today;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        try
+        {
+            _items = await TodoService.GetArchivedAsync(_tag, _from, _to, _q);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task Reset()
+    {
+        _q = null;
+        _tag = null;
+        _from = DateTime.Today.AddDays(-7);
+        _to = DateTime.Today;
+        await Load();
+    }
+
+    private static string PriorityLabel(int priority) => priority switch
+    {
+        1 => "!",
+        2 => "!!",
+        3 => "!!!",
+        4 => "!!!!",
+        _ => string.Empty,
+    };
+}

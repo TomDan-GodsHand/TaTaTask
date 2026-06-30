@@ -1,0 +1,95 @@
+@page "/register"
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using Microsoft.EntityFrameworkCore
+@using TaTaTask.Data
+@using TaTaTask.Models.Dtos
+@using TaTaTask.Models.Entities
+@using TaTaTask.Services
+@inject AppDbContext Db
+@inject IPasswordHasher Hasher
+@inject NavigationManager Nav
+
+<PageTitle>注册</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraSmall" Class="mt-16">
+    <MudPaper Elevation="3" Class="pa-8">
+        <MudText Typo="Typo.h5" Align="Align.Center" Class="mb-6">注册 TaTaTask</MudText>
+
+        <EditForm Model="Input" OnValidSubmit="RegisterUser" FormName="register" method="post">
+            <DataAnnotationsValidator />
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_error</MudAlert>
+            }
+
+            <div class="mb-3">
+                <label class="form-label">用户名</label>
+                <InputText class="form-control" @bind-Value="Input.Username" autocomplete="username" />
+                <ValidationMessage For="@(() => Input.Username)" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">密码</label>
+                <InputText type="password" class="form-control" @bind-Value="Input.Password" autocomplete="new-password" />
+                <ValidationMessage For="@(() => Input.Password)" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">确认密码</label>
+                <InputText type="password" class="form-control" @bind-Value="Input.ConfirmPassword" autocomplete="new-password" />
+                <ValidationMessage For="@(() => Input.ConfirmPassword)" />
+            </div>
+
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Class="mt-4">注册</MudButton>
+        </EditForm>
+
+        <MudText Align="Align.Center" Class="mt-4">
+            已有账号？<MudLink Href="login">登录</MudLink>
+        </MudText>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm] private RegisterRequest Input { get; set; } = default!;
+    private string? _error;
+
+    protected override void OnInitialized() => Input ??= new();
+
+    private async Task RegisterUser()
+    {
+        if (await Db.Users.AnyAsync(u => u.Username == Input.Username))
+        {
+            _error = "用户名已被占用";
+            return;
+        }
+
+        var user = new User
+        {
+            Username = Input.Username,
+            PasswordHash = Hasher.Hash(Input.Password),
+        };
+        Db.Users.Add(user);
+
+        try
+        {
+            await Db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            _error = "用户名已被占用";
+            return;
+        }
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.Username),
+        };
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+
+        Nav.NavigateTo("tatatask");
+    }
+}

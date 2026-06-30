@@ -58,3 +58,77 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+/* Kanban board layout */
+.board-page {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - 96px);
+}
+
+.kanban-board {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    gap: 0;
+    align-items: stretch;
+}
+
+.kanban-lane {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px;
+    border-right: 1px solid var(--mud-palette-lines-default);
+}
+
+.kanban-lane:last-child {
+    border-right: none;
+}
+
+.kanban-lane-cards {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 2px;
+    padding-bottom: 88px;
+}
+
+.app-fab {
+    position: fixed;
+    bottom: 32px;
+    right: 32px;
+    z-index: 1100;
+}
+
+.app-search {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    width: min(420px, 90vw);
+    background-color: var(--mud-palette-surface);
+    border: 2px solid var(--mud-palette-primary);
+}
+
+@media (max-width: 768px) {
+    .app-fab {
+        bottom: 84px;
+        right: 16px;
+    }
+}
+
+@media (max-width: 768px) {
+    .kanban-board {
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        gap: 12px;
+    }
+
+    .kanban-lane {
+        flex: 0 0 86vw;
+        scroll-snap-align: center;
+    }
+}
