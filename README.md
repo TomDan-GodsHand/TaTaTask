@@ -212,7 +212,7 @@ sudo systemctl enable --now tatatask
 首次部署：
 
 ```bash
-curl -sL https://raw.githubusercontent.com/TomDan-GodsHand/TaTaTask/main/deploy/update.sh -o update.sh
+curl -sL https://raw.githubusercontent.com/TomDan-GodsHand/TaTaTask/master/deploy/update.sh -o update.sh
 chmod +x update.sh
 ./update.sh
 ```
@@ -296,7 +296,7 @@ journalctl -u tatatask -f
 ### 卸载
 
 ```bash
-curl -sL https://raw.githubusercontent.com/TomDan-GodsHand/TaTaTask/main/deploy/uninstall.sh -o uninstall.sh
+curl -sL https://raw.githubusercontent.com/TomDan-GodsHand/TaTaTask/master/deploy/uninstall.sh -o uninstall.sh
 chmod +x uninstall.sh
 ./uninstall.sh
 ```
