@@ -85,7 +85,7 @@
 - [ ] 错误处理与异常页面
 - [ ] 前端表单验证
 - [ ] 响应式适配
-- [ ] `linux-x64` 发布与部署文档
+- [x] `linux-x64` 发布与部署文档
 
 ## 项目结构
 
@@ -168,24 +168,89 @@ dotnet run --project TaTaTask
 
 打开 `https://localhost:7162` 即可访问。
 
-## 部署到 systemd（linux-x64）
+## 发布（GitHub Actions 自动构建）
 
-### 发布
+基于 git tag 驱动，推送 tag 自动触发 CI/CD 构建并创建 GitHub Release：
 
 ```bash
-dotnet publish TaTaTask -c Release -r linux-x64 --self-contained -o ./publish
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-### 部署
+工作流（`.github/workflows/release.yml`）：
+1. 安装 .NET 10 SDK
+2. `dotnet publish` → `linux-x64` 自包含单文件
+3. 打包为 `tatatask-{version}-linux-x64.tar.gz`
+4. 创建 GitHub Release 并附带构建产物
+
+版本号写入程序集（`TaTaTask.csproj` → `<Version>`），可在设置页面底部查看当前运行版本。
+
+---
+
+## 部署到 systemd（linux-x64）
+
+### 方式一：手动部署
+
+```bash
+dotnet publish TaTaTask -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o ./publish
+```
 
 ```bash
 sudo mkdir -p /opt/tatatask
 sudo cp -r ./publish/* /opt/tatatask/
 sudo useradd -r -s /usr/sbin/nologin tatatask   # 首次运行只需执行一次
 sudo chown -R tatatask:tatatask /opt/tatatask
-sudo cp deploy/tatatask.service /etc/systemd/system/
+sudo cp deploy/tatatask.service /usr/lib/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now tatatask
+```
+
+### 方式二：一键部署/更新脚本（Arch Linux 推荐）
+
+首次部署：
+
+```bash
+curl -sL https://raw.githubusercontent.com/TomDan-GodsHand/TaTaTask/main/deploy/update.sh -o update.sh
+chmod +x update.sh
+./update.sh
+```
+
+之后每次发布新版本，只需一行：
+
+```bash
+./update.sh
+```
+
+`update.sh` 自动完成：检查最新 Release → 下载 `tar.gz` → 停止服务 → 解压到 `/opt/tatatask` → 安装 systemd 服务 → 启动。
+
+#### 定时自动更新（可选）
+
+```bash
+# /etc/systemd/system/tatatask-update.service
+[Unit]
+Description=Update TaTaTask
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/update-tatatask
+```
+
+```bash
+# /etc/systemd/system/tatatask-update.timer
+[Unit]
+Description=Weekly TaTaTask update check
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+sudo cp update.sh /usr/local/bin/update-tatatask
+sudo systemctl enable --now tatatask-update.timer
 ```
 
 ### 日志
@@ -195,3 +260,13 @@ sudo systemctl enable --now tatatask
 ```bash
 journalctl -u tatatask -f
 ```
+
+### 卸载
+
+```bash
+curl -sL https://raw.githubusercontent.com/TomDan-GodsHand/TaTaTask/main/deploy/uninstall.sh -o uninstall.sh
+chmod +x uninstall.sh
+./uninstall.sh
+```
+
+脚本会依次：停止服务 → 禁用 systemd → 删除程序目录 `/opt/tatatask` → 删除数据库 → 可选删除 `tatatask` 用户。
