@@ -4,6 +4,20 @@ set -euo pipefail
 REPO="TomDan-GodsHand/TaTaTask"
 INSTALL_DIR="/opt/tatatask"
 SERVICE="tatatask.service"
+SCRIPT_VERSION=1
+
+# ── 自更新 ──
+SELF_URL="https://raw.githubusercontent.com/${REPO}/main/deploy/update.sh"
+REMOTE_VER=$(curl -sL "$SELF_URL" 2>/dev/null | grep '^SCRIPT_VERSION=' | cut -d= -f2)
+
+if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" -gt "$SCRIPT_VERSION" ] 2>/dev/null; then
+    SCRIPT_PATH=$(readlink -f "$0")
+    echo "==> update.sh 有新版本 ($SCRIPT_VERSION -> $REMOTE_VER)，先更新自身..."
+    curl -sL "$SELF_URL" -o "$SCRIPT_PATH"
+    chmod +x "$SCRIPT_PATH"
+    exec "$SCRIPT_PATH" "$@"
+fi
+# ── 自更新结束 ──
 
 echo "==> 检查最新版本..."
 LATEST=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
@@ -52,6 +66,9 @@ sudo chmod 600 "${INSTALL_DIR}/ssl/pass.env"
 echo "==> 设置权限..."
 sudo chmod +x "${INSTALL_DIR}/TaTaTask"
 sudo chown -R tatatask:tatatask "${INSTALL_DIR}"
+
+echo "==> 更新数据库结构..."
+sudo -u tatatask "${INSTALL_DIR}/TaTaTask" --migrate-only
 
 echo "==> 安装 systemd 服务(首次) 或重载..."
 if [ -f "${INSTALL_DIR}/${SERVICE}" ]; then

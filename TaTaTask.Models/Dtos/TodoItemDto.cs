@@ -18,6 +18,9 @@ public class TodoItemDto
     public bool IsArchived { get; set; }
     public DateTime? ArchivedAt { get; set; }
     public DateTime? DoneAt { get; set; }
+    public TodoStatus? PreviousStatus { get; set; }
+    public string? FrozenReason { get; set; }
+    public DateTime? FrozeAt { get; set; }
     public List<TodoStepDto> Steps { get; set; } = new();
 }
 

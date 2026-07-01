@@ -88,6 +88,14 @@ h1:focus {
     border-right: none;
 }
 
+.kanban-lane-frozen {
+    background: linear-gradient(180deg, #e8f4fd 0%, #d0ebfa 40%, #e8f4fd 100%);
+}
+
+.kanban-lane-frozen .mud-card {
+    border-color: #b3d9f2 !important;
+}
+
 .kanban-lane-cards {
     flex: 1;
     min-height: 0;
@@ -147,5 +155,104 @@ h1:focus {
     .kanban-lane {
         flex: 0 0 86vw;
         scroll-snap-align: center;
+    }
+}
+
+/* Stats page */
+.stats-page {
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+.stats-cards {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.stats-card {
+    padding: 16px;
+    text-align: center;
+}
+
+.stats-panels {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: 16px;
+}
+
+.stats-panel {
+    padding: 16px;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 8px;
+}
+
+.frozen-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.frozen-item {
+    padding: 8px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 6px;
+}
+
+.frozen-warn {
+    border-left: 3px solid var(--mud-palette-error);
+    background-color: rgba(var(--mud-palette-error-rgb, 229,0,0), .04);
+}
+
+.trend-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.trend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.trend-bar-track {
+    flex: 1;
+    height: 22px;
+    background: rgba(0,0,0,0.06);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.trend-bar {
+    height: 100%;
+    background: var(--mud-palette-primary);
+    border-radius: 4px;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    transition: width .4s ease;
+}
+
+.trend-bar-weekend {
+    background: var(--mud-palette-warning);
+}
+
+.trend-bar-label {
+    padding-left: 6px;
+    font-size: .75rem;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    .stats-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .stats-panels {
+        grid-template-columns: 1fr;
     }
 }

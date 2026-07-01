@@ -22,6 +22,10 @@
                            Color="@(IsActive("archive") ? Color.Primary : Color.Inherit)"
                            Style="@(IsActive("archive") ? "font-weight:bold;" : null)"
                            StartIcon="@Icons.Material.Filled.Archive" Class="mr-1">归档</MudButton>
+                <MudButton Href="stats" Variant="Variant.Text"
+                           Color="@(IsActive("stats") ? Color.Primary : Color.Inherit)"
+                           Style="@(IsActive("stats") ? "font-weight:bold;" : null)"
+                           StartIcon="@Icons.Material.Filled.BarChart" Class="mr-1">统计</MudButton>
                 <MudButton Href="settings" Variant="Variant.Text"
                            Color="@(IsActive("settings") ? Color.Primary : Color.Inherit)"
                            Style="@(IsActive("settings") ? "font-weight:bold;" : null)"

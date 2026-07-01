@@ -1,0 +1,148 @@
+@page "/stats"
+@rendermode InteractiveAuto
+@using Microsoft.AspNetCore.Authorization
+@using TaTaTask.Client.Services
+@using TaTaTask.Models.Dtos
+@attribute [Authorize]
+@inject ITodoService TodoService
+@inject NavigationManager Nav
+
+<PageTitle>数据统计</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+}
+
+<div class="stats-page">
+    <MudText Typo="Typo.h5" Class="mb-4"><b>数据统计</b></MudText>
+
+    <div class="stats-cards">
+        <MudPaper Class="stats-card" Elevation="2">
+            <MudText Typo="Typo.caption" Style="opacity:.7;">活跃任务</MudText>
+            <MudText Typo="Typo.h4" Color="Color.Primary"><b>@_stats.ActiveCount</b></MudText>
+        </MudPaper>
+        <MudPaper Class="stats-card" Elevation="2">
+            <MudText Typo="Typo.caption" Style="opacity:.7;">今日完成</MudText>
+            <MudText Typo="Typo.h4" Color="Color.Success"><b>@_stats.DoneTodayCount</b></MudText>
+        </MudPaper>
+        <div style="cursor:pointer;" @onclick="@(() => Nav.NavigateTo("tatatask"))">
+            <MudPaper Class="stats-card" Elevation="2">
+                <MudText Typo="Typo.caption" Style="opacity:.7;">
+                    <MudIcon Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small" /> 冻结任务
+                </MudText>
+                <MudText Typo="Typo.h4" Color="Color.Info"><b>@_stats.FrozenCount</b></MudText>
+            </MudPaper>
+        </div>
+        <MudPaper Class="stats-card" Elevation="2">
+            <MudText Typo="Typo.caption" Color="Color.Error" Style="opacity:.7;">逾期任务</MudText>
+            <MudText Typo="Typo.h4" Color="Color.Error"><b>@_stats.OverdueCount</b></MudText>
+        </MudPaper>
+        <MudPaper Class="stats-card" Elevation="2">
+            <MudText Typo="Typo.caption" Style="opacity:.7;">步骤完成率</MudText>
+            <MudText Typo="Typo.h4" Color="Color.Primary"><b>@StepRate()</b></MudText>
+        </MudPaper>
+    </div>
+
+    <div class="stats-panels">
+        <div class="stats-panel">
+            <MudText Typo="Typo.subtitle1" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small" Class="mr-1" /> 冻结清单
+            </MudText>
+            @if (_stats.FrozenItems.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Style="opacity:.5;">暂无冻结任务</MudText>
+            }
+            else
+            {
+                <div class="frozen-list">
+                    @foreach (var f in _stats.FrozenItems)
+                    {
+                        <div class="frozen-item @(f.DaysFrozen >= 7 ? "frozen-warn" : "")" style="cursor:pointer;"
+                             @onclick="@(() => Nav.NavigateTo("tatatask"))">
+                            <div class="d-flex align-center">
+                                @if (f.DaysFrozen >= 7)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Color="Color.Error" Class="mr-1" />
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small" Color="Color.Info" Class="mr-1" />
+                                }
+                                <MudText Typo="Typo.body2" Style="flex:1;">@f.Title</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="@(f.DaysFrozen >= 7 ? Color.Error : Color.Info)">
+                                    冻结 @f.DaysFrozen 天
+                                </MudChip>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(f.FrozenReason))
+                            {
+                                <MudText Typo="Typo.caption" Style="opacity:.6; margin-left:28px;">@f.FrozenReason</MudText>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="stats-panel">
+            <MudText Typo="Typo.subtitle1" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Small" Class="mr-1" /> 近7天完成趋势
+            </MudText>
+            @{
+                var maxCount = _stats.DailyDone.Count > 0 ? _stats.DailyDone.Max(d => d.Count) : 1;
+            }
+            <div class="trend-bars">
+                @foreach (var d in _stats.DailyDone)
+                {
+                    var width = maxCount > 0 ? (int)(d.Count * 100.0 / maxCount) : 0;
+                    var isWeekend = DateIsWeekend(d.Date);
+                    <div class="trend-row">
+                        <MudText Typo="Typo.caption" Style="width:42px;" Color="@(isWeekend ? Color.Warning : Color.Default)">@d.Date</MudText>
+                        <div class="trend-bar-track">
+                            <div class="trend-bar @(isWeekend ? "trend-bar-weekend" : "")" style="width:@(width)%">
+                                @if (d.Count > 0)
+                                {
+                                    <span class="trend-bar-label">@d.Count</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private DashboardStatsDto _stats = new();
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            _stats = await TodoService.GetStatsAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string StepRate()
+    {
+        if (_stats.TotalStepsActive == 0) return "N/A";
+        var pct = (int)(_stats.CompletedStepsActive * 100.0 / _stats.TotalStepsActive);
+        return $"{pct}%";
+    }
+
+    private static bool DateIsWeekend(string dateStr)
+    {
+        if (DateTime.TryParseExact(dateStr, "MM/dd", null, System.Globalization.DateTimeStyles.None, out var dt))
+        {
+            return dt.DayOfWeek == DayOfWeek.Saturday || dt.DayOfWeek == DayOfWeek.Sunday;
+        }
+        return false;
+    }
+}
