@@ -209,6 +209,12 @@ public class ServerTodoService : ITodoService
         }
 
         step.IsCompleted = !step.IsCompleted;
+
+        if (task.Status == TodoStatus.NotStarted && task.Steps.Any(s => s.IsCompleted))
+        {
+            task.Status = TodoStatus.InProgress;
+        }
+
         task.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return ToDto(task);

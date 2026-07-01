@@ -11,7 +11,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
-<PageTitle>看板</PageTitle>
+<PageTitle>TaTaTask</PageTitle>
 
 <div class="board-page">
 
@@ -65,12 +65,10 @@
                 <MudChip T="string" Size="Size.Small" Class="ml-2">@Lane(status).Count()</MudChip>
             </div>
 
-            <div class="kanban-lane-cards" @ondragover:preventDefault="true" @ondrop="@(() => OnDrop(status))">
+            <div class="kanban-lane-cards">
                 @foreach (var task in Lane(status))
                 {
-                    <div draggable="@((_editId != task.Id).ToString().ToLowerInvariant())"
-                         @ondragstart="@(() => _dragId = task.Id)"
-                         @ondragend="@(() => _dragId = null)">
+                    <div>
                         @if (_editId == task.Id)
                         {
                             <MudCard Class="my-2" Elevation="3">
@@ -180,7 +178,7 @@
                         }
                         else
                         {
-                            <MudCard Class="my-2" Elevation="2" Style="cursor:grab;">
+                            <MudCard Class="my-2" Elevation="2">
                                 <MudCardContent Class="pa-3">
                                     <div class="d-flex align-center" style="cursor:pointer;" @onclick="@(() => ToggleExpand(task.Id))">
                                         @if (task.Steps.Count > 0)
@@ -414,7 +412,6 @@
     private List<string> _editStepsToAdd = new();
     private string _editStepInput = string.Empty;
 
-    private int? _dragId;
     private readonly HashSet<int> _dismissed = new();
     private bool _showAllDue;
     private readonly HashSet<int> _expanded = new();
@@ -629,24 +626,6 @@
         }
     }
 
-    private async Task OnDrop(TodoStatus status)
-    {
-        var id = _dragId;
-        _dragId = null;
-        if (id is null)
-        {
-            return;
-        }
-
-        var task = _tasks.FirstOrDefault(t => t.Id == id);
-        if (task is null || task.Status == status)
-        {
-            return;
-        }
-
-        await ChangeStatus(task, status);
-    }
-
     private async Task DeleteTask(TodoItemDto task)
     {
         if (!await JS.InvokeAsync<bool>("confirm", $"删除任务\u201c{task.Title}\u201d？此操作不可恢复。"))
@@ -722,7 +701,19 @@
 
     private async Task ToggleStep(TodoItemDto task, TodoStepDto step)
     {
-        ReplaceTask(await TodoService.ToggleStepAsync(task.Id, step.Id));
+        var updated = await TodoService.ToggleStepAsync(task.Id, step.Id);
+        if (updated is null) return;
+        ReplaceTask(updated);
+
+        if (updated.Steps.Count > 0 && updated.Steps.All(s => s.IsCompleted)
+            && updated.Status != TodoStatus.Done && updated.Status != TodoStatus.Frozen)
+        {
+            var move = await JS.InvokeAsync<bool>("confirm", "所有子步骤已完成，是否移入\u201c已完成\u201d？");
+            if (move)
+            {
+                await ChangeStatus(updated, TodoStatus.Done);
+            }
+        }
     }
 
     private async Task DeleteStep(TodoItemDto task, TodoStepDto step)
