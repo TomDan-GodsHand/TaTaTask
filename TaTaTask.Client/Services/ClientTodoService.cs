@@ -25,9 +25,9 @@ public class ClientTodoService : ITodoService
         return (await resp.Content.ReadFromJsonAsync<TodoItemDto>())!;
     }
 
-    public async Task<TodoItemDto?> UpdateAsync(int id, TodoItemDto dto)
+    public async Task<TodoItemDto?> UpdateAsync(int id, UpdateTodoRequest request)
     {
-        var resp = await _http.PutAsJsonAsync($"api/todos/{id}", dto);
+        var resp = await _http.PutAsJsonAsync($"api/todos/{id}", request);
         return resp.IsSuccessStatusCode
             ? await resp.Content.ReadFromJsonAsync<TodoItemDto>()
             : null;

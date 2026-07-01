@@ -7,7 +7,7 @@ public interface ITodoService
 {
     Task<List<TodoItemDto>> GetBoardAsync(string? search = null);
     Task<TodoItemDto> CreateAsync(CreateTodoRequest request);
-    Task<TodoItemDto?> UpdateAsync(int id, TodoItemDto dto);
+    Task<TodoItemDto?> UpdateAsync(int id, UpdateTodoRequest request);
     Task<bool> DeleteAsync(int id);
     Task<TodoItemDto> ChangeStatusAsync(int id, TodoStatus status);
     Task<TodoItemDto?> AddStepAsync(int todoId, string title);
