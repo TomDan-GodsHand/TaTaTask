@@ -1,14 +1,13 @@
 #!/bin/bash
-set -euo pipefail
 
 REPO="TomDan-GodsHand/TaTaTask"
 INSTALL_DIR="/opt/tatatask"
 SERVICE="tatatask.service"
-SCRIPT_VERSION=1
+SCRIPT_VERSION=2
 
-# ── 自更新 ──
+# ── 自更新（必须在 set -e 之前执行，避免 pipefail 在赋值中触发退出）──
 SELF_URL="https://raw.githubusercontent.com/${REPO}/main/deploy/update.sh"
-REMOTE_VER=$(curl -sL "$SELF_URL" 2>/dev/null | grep '^SCRIPT_VERSION=' | cut -d= -f2)
+REMOTE_VER=$(curl -sL "$SELF_URL" 2>/dev/null | grep '^SCRIPT_VERSION=' | cut -d= -f2 || true)
 
 if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" -gt "$SCRIPT_VERSION" ] 2>/dev/null; then
     SCRIPT_PATH=$(readlink -f "$0")
@@ -17,7 +16,9 @@ if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" -gt "$SCRIPT_VERSION" ] 2>/dev/null; 
     chmod +x "$SCRIPT_PATH"
     exec "$SCRIPT_PATH" "$@"
 fi
-# ── 自更新结束 ──
+
+set -euo pipefail
+# ── 自更新结束，以下受 set -e 保护 ──
 
 echo "==> 检查最新版本..."
 LATEST=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
