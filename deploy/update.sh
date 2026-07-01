@@ -22,12 +22,22 @@ if [ -f "${INSTALL_DIR}/TaTaTask" ]; then
     cp "${INSTALL_DIR}/TaTaTask" "/tmp/TaTaTask.bak" 2>/dev/null || true
 fi
 
+echo "==> 备份配置文件..."
+for f in appsettings.json appsettings.Production.json; do
+    [ -f "${INSTALL_DIR}/${f}" ] && sudo cp "${INSTALL_DIR}/${f}" "/tmp/${f}.bak"
+done
+
 echo "==> 停止服务..."
 sudo systemctl stop tatatask 2>/dev/null || true
 
 echo "==> 解压安装到 ${INSTALL_DIR}..."
 sudo mkdir -p "${INSTALL_DIR}"
 sudo tar xzf "/tmp/tatatask.tar.gz" -C "${INSTALL_DIR}"
+
+echo "==> 还原配置文件..."
+for f in appsettings.json appsettings.Production.json; do
+    [ -f "/tmp/${f}.bak" ] && sudo cp "/tmp/${f}.bak" "${INSTALL_DIR}/${f}"
+done
 
 echo "==> 检查运行用户..."
 id tatatask &>/dev/null || sudo useradd -r -s /usr/sbin/nologin tatatask

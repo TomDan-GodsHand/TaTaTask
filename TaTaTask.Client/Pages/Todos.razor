@@ -468,7 +468,7 @@
         var now = DateTime.Now;
         var cutoff = now.AddDays(-7);
         return _tasks
-            .Where(t => t.DueDate.HasValue && !t.IsArchived && !_dismissed.Contains(t.Id))
+            .Where(t => t.DueDate.HasValue && !t.IsArchived && t.Status != TodoStatus.Done && t.Status != TodoStatus.Frozen && !_dismissed.Contains(t.Id))
             .Where(t =>
             {
                 var due = t.DueDate!.Value;
