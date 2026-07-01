@@ -9,7 +9,6 @@
 @attribute [Authorize]
 @inject ITodoService TodoService
 @inject NavigationManager Nav
-@inject IJSRuntime JS
 
 <PageTitle>TaTaTask</PageTitle>
 
@@ -269,11 +268,17 @@
                                     }
                                 </MudCardContent>
                                 <MudCardActions Class="pa-1">
+                                    @if (status == TodoStatus.InProgress)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small"
+                                                       Color="Color.Warning"
+                                                       OnClick="@(() => UndoToNotStarted(task))" />
+                                    }
                                     @if (NextStatus(status) is { } next)
                                     {
                                         <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small"
                                                        Color="Color.Primary"
-                                                       OnClick="@(() => ChangeStatus(task, next))" />
+                                                       OnClick="@(() => AdvanceStatus(task, status, next))" />
                                     }
                                     @if (status != TodoStatus.Frozen && status != TodoStatus.Done)
                                     {
@@ -287,6 +292,9 @@
                                     }
                                     @if (status == TodoStatus.Done)
                                     {
+                                        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small"
+                                                       Color="Color.Warning"
+                                                       OnClick="@(() => UndoDone(task))" />
                                         <MudIconButton Icon="@Icons.Material.Filled.Archive" Size="Size.Small"
                                                        Color="Color.Secondary" OnClick="@(() => ArchiveTask(task))" />
                                     }
@@ -403,6 +411,27 @@
     </div>
 }
 
+@if (_confirmAction is not null)
+{
+    <div style="position:fixed; inset:0; background-color:rgba(0,0,0,0.5); z-index:9990;"></div>
+    <div style="position:fixed; inset:0; z-index:9991; display:flex; align-items:center; justify-content:center; padding:16px;">
+        <MudPaper Class="pa-5" Elevation="8" Style="width:420px; max-width:100%;">
+            <MudText Typo="Typo.h6" Class="mb-3">
+                @if (!string.IsNullOrEmpty(_confirmIcon))
+                {
+                    <MudIcon Icon="@_confirmIcon" Size="Size.Small" Class="mr-1" />
+                }
+                @_confirmTitle
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mb-3 mud-text-secondary">@_confirmMessage</MudText>
+            <div class="d-flex justify-end mt-4" style="gap:8px;">
+                <MudButton OnClick="CancelConfirm">取消</MudButton>
+                <MudButton Variant="Variant.Filled" Color="_confirmBtnColor" OnClick="ExecuteConfirm">@_confirmBtnText</MudButton>
+            </div>
+        </MudPaper>
+    </div>
+}
+
 <div class="app-bottom-bar">
     <MudPaper Elevation="0" Class="app-search rounded-pill px-3">
         <MudTextField @bind-Value="_search" Immediate="true" Placeholder="搜索标题或标签"
@@ -460,6 +489,13 @@
 
     private int? _freezeTargetId;
     private string _freezeReason = string.Empty;
+
+    private string _confirmTitle = string.Empty;
+    private string _confirmIcon = string.Empty;
+    private string _confirmMessage = string.Empty;
+    private string _confirmBtnText = "确认";
+    private Color _confirmBtnColor = Color.Primary;
+    private Func<Task>? _confirmAction;
 
     private int _settingsDefaultWarningHours = 48;
     private int _settingsDefaultDueDays = 3;
@@ -574,6 +610,29 @@
         await ChangeStatus(task, TodoStatus.Frozen, reason);
     }
 
+    private void OpenConfirm(TodoItemDto task, string title, string icon, string message, string btnText, Color btnColor, Func<Task> action)
+    {
+        _confirmTitle = title;
+        _confirmIcon = icon;
+        _confirmMessage = message;
+        _confirmBtnText = btnText;
+        _confirmBtnColor = btnColor;
+        _confirmAction = action;
+    }
+
+    private void CancelConfirm()
+    {
+        _confirmAction = null;
+    }
+
+    private async Task ExecuteConfirm()
+    {
+        var action = _confirmAction;
+        _confirmAction = null;
+        if (action is not null)
+            await action();
+    }
+
     private async Task SubmitCreate()
     {
         if (string.IsNullOrWhiteSpace(_cTitle))
@@ -680,14 +739,34 @@
         if (e.Key == "Enter") AddEditStep();
     }
 
+    private void UndoToNotStarted(TodoItemDto task)
+    {
+        OpenConfirm(task, "撤回任务", Icons.Material.Filled.ArrowBack,
+            $"确认将任务\u201c{task.Title}\u201d撤回未开始？子步骤将全部重置为未完成。",
+            "确认撤回", Color.Warning,
+            async () =>
+            {
+                await TodoService.ChangeStatusAsync(task.Id, TodoStatus.NotStarted, resetSteps: true);
+                _error = null;
+                await LoadAsync();
+            });
+    }
+
+    private void UndoDone(TodoItemDto task)
+    {
+        OpenConfirm(task, "撤回完成", Icons.Material.Filled.ArrowBack,
+            $"确认将任务\u201c{task.Title}\u201d撤回进行中？",
+            "确认撤回", Color.Warning,
+            async () =>
+            {
+                await TodoService.ChangeStatusAsync(task.Id, TodoStatus.InProgress);
+                _error = null;
+                await LoadAsync();
+            });
+    }
+
     private async Task ChangeStatus(TodoItemDto task, TodoStatus status, string? frozenReason = null)
     {
-        if (status == TodoStatus.Done)
-        {
-            if (!await JS.InvokeAsync<bool>("confirm", $"确认将任务\u201c{task.Title}\u201d标记为已完成？"))
-                return;
-        }
-
         try
         {
             await TodoService.ChangeStatusAsync(task.Id, status, frozenReason);
@@ -700,34 +779,58 @@
         }
     }
 
-    private async Task DeleteTask(TodoItemDto task)
+    private void AdvanceStatus(TodoItemDto task, TodoStatus from, TodoStatus to)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", $"删除任务\u201c{task.Title}\u201d？此操作不可恢复。"))
+        if (from == TodoStatus.NotStarted && to == TodoStatus.InProgress)
         {
-            return;
+            OpenConfirm(task, "开始任务", Icons.Material.Filled.PlayArrow,
+                $"确认开始任务\u201c{task.Title}\u201d？",
+                "确认开始", Color.Primary,
+                () => ChangeStatus(task, TodoStatus.InProgress));
         }
-
-        await TodoService.DeleteAsync(task.Id);
-        await LoadAsync();
+        else if (from == TodoStatus.InProgress && to == TodoStatus.Done)
+        {
+            OpenConfirm(task, "完成任务", Icons.Material.Filled.CheckCircle,
+                $"确认将任务\u201c{task.Title}\u201d标记为已完成？",
+                "确认完成", Color.Success,
+                () => ChangeStatus(task, TodoStatus.Done));
+        }
+        else
+        {
+            _ = ChangeStatus(task, to);
+        }
     }
 
-    private async Task ArchiveTask(TodoItemDto task)
+    private void DeleteTask(TodoItemDto task)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", $"归档任务\u201c{task.Title}\u201d？归档后不可恢复。"))
-        {
-            return;
-        }
+        OpenConfirm(task, "删除任务", Icons.Material.Filled.Delete,
+            $"删除任务\u201c{task.Title}\u201d？此操作不可恢复。",
+            "确认删除", Color.Error,
+            async () =>
+            {
+                await TodoService.DeleteAsync(task.Id);
+                await LoadAsync();
+            });
+    }
 
-        try
-        {
-            await TodoService.ArchiveAsync(task.Id);
-            _error = null;
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
+    private void ArchiveTask(TodoItemDto task)
+    {
+        OpenConfirm(task, "归档任务", Icons.Material.Filled.Archive,
+            $"归档任务\u201c{task.Title}\u201d？归档后不可恢复。",
+            "确认归档", Color.Secondary,
+            async () =>
+            {
+                try
+                {
+                    await TodoService.ArchiveAsync(task.Id);
+                    _error = null;
+                    await LoadAsync();
+                }
+                catch (Exception ex)
+                {
+                    _error = ex.Message;
+                }
+            });
     }
 
     private void ToggleExpand(int taskId)
@@ -782,11 +885,10 @@
         if (updated.Steps.Count > 0 && updated.Steps.All(s => s.IsCompleted)
             && updated.Status != TodoStatus.Done && updated.Status != TodoStatus.Frozen)
         {
-            var move = await JS.InvokeAsync<bool>("confirm", "所有子步骤已完成，是否移入\u201c已完成\u201d？");
-            if (move)
-            {
-                await ChangeStatus(updated, TodoStatus.Done);
-            }
+            OpenConfirm(updated, "子步骤完成", Icons.Material.Filled.CheckCircle,
+                "所有子步骤已完成，是否移入\u201c已完成\u201d？",
+                "移入已完成", Color.Success,
+                () => ChangeStatus(updated, TodoStatus.Done));
         }
     }
 
