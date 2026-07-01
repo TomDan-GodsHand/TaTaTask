@@ -1,251 +1,165 @@
-# TaTaTask
+<p align="center">
+  <img src="TaTaTask/wwwroot/img/logo.png" alt="TaTaTask" height="80" />
+</p>
 
-自托管的看板式 TODO 管理 Web 应用，面向个人使用。
+<h1 align="center">TaTaTask</h1>
+
+<p align="center">
+  <strong>自托管的看板式个人任务管理应用</strong><br>
+  简单、快速、隐私优先。你的任务你做主。
+</p>
+
+<p align="center">
+  <a href="https://github.com/TomDan-GodsHand/TaTaTask/blob/main/LICENSE.txt"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
+  <a href="https://dotnet.microsoft.com/en-us/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-10.0-512bd4?logo=dotnet" alt=".NET 10" /></a>
+  <a href="https://github.com/TomDan-GodsHand/TaTaTask/actions"><img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build" /></a>
+  <img src="https://img.shields.io/badge/platform-linux--x64-blueviolet?logo=linux" alt="Platform" />
+  <img src="https://img.shields.io/badge/database-SQLite-003b57?logo=sqlite" alt="SQLite" />
+</p>
+
+---
+
+## 特性
+
+<table>
+<tr><td width="50%">
+
+### 看板管理
+- **4 个预设泳道** — 未开始 / 进行中 / 已完成 / 冻结
+- **泳道流转** — 一键推进任务，拦截规则保护流程
+- **拖拽排序** — 截止时间 + 优先级智能加权排序
+- **实时搜索** — 标题 + 标签关键词过滤，URL 参数持久化
+
+### 任务管理
+- 标题、描述、优先级（! / !! / !!! / !!!!）
+- 标签徽章，逗号分隔多标签
+- 截止时间着色（蓝色=未来 / 橙色=今天 / 红色=已逾期）
+- 行内编辑，所见即所得
+
+</td><td width="50%">
+
+### 子步骤
+- 任务内多步骤，展开/折叠
+- Checkbox 勾选完成，完成率实时显示
+- 全部完成方可流转至「已完成」门禁
+
+### 冻结机制
+- 暂停推进的任务移入「冰箱」泳道
+- 弹窗输入冻结原因，记录冻结时长
+- 解冻自动恢复到进入前的原状态
+- 冻结泳道主题色（淡蓝冰箱）
+
+### 临期提醒
+- 看板顶部通栏，距截止时间 < 阈值自动提醒
+- 过期 7 天自动移除，可单独关闭
+
+### 归档系统
+- 已完成任务一键归档，7 天自动归档
+- 按标签、日期范围、标题关键词浏览历史
+
+### 数据统计
+- 顶部指标卡：活跃 / 今日完成 / 冻结 / 逾期 / 步骤完成率
+- 冻结清单：按时长排列，≥7 天红色警告
+- 近 7 天完成趋势柱状图
+
+</td></tr>
+</table>
+
+---
 
 ## 技术栈
 
-| 项目     | 选型                              |
-|----------|-----------------------------------|
-| 运行时   | .NET 10                           |
-| 前端     | Blazor + MudBlazor                |
-| 渲染模式 | InteractiveAuto / SSR             |
-| 数据库   | SQLite (EF Core)                  |
-| 认证     | ASP.NET Core Cookie Auth + BCrypt |
-| 部署     | 单进程自托管，linux-x64           |
+| 类别     | 选型                                       |
+| -------- | ------------------------------------------ |
+| 运行时   | .NET 10                                    |
+| 前端框架 | Blazor (InteractiveAuto + SSR)             |
+| UI 组件  | [MudBlazor](https://mudblazor.com/)         |
+| 数据库   | SQLite (EF Core Code-First)                |
+| 认证     | ASP.NET Core Cookie Auth + BCrypt 密码哈希 |
+| 部署     | 单进程自托管，linux-x64，systemd 管理      |
+| CI/CD    | GitHub Actions，tag 驱动自动构建 Release   |
 
-## 功能概览
-
-- **用户系统**：自由注册/登录，Cookie 认证（14天），用户空间完全隔离
-- **看板**：5 个预设泳道（未开始 / 进行中 / 收敛中 / 已完成 / 冻结），横向滚动，支持标题/标签实时搜索
-- **任务**：标题、描述、优先级（! / !! / !!!）、标签徽章、截止时间（过期/今天/未来 着色）、泳道流转按钮、拖拽移动
-- **子步骤**：任务内多步骤，展开折叠、勾选完成、独立排序
-- **临期提醒**：看板顶部提醒条（最多 8 条），距截止时间 < 自定义阈值的任务自动置顶，过期超 7 天自动移除、可临时关闭
-- **归档**：已完成任务一键/自动（7天）归档，不可逆，支持标签/日期/标题历史浏览
-
-## 页面
-
-| 路由        | 页面     | 渲染模式          | 认证   |
-|-------------|----------|-------------------|--------|
-| `/`         | 首页     | InteractiveServer | 否     |
-| `/login`    | 登录     | SSR               | 否     |
-| `/register` | 注册     | SSR               | 否     |
-| `/todos`    | 看板     | InteractiveAuto   | 是（`?q=`搜索） |
-| `/archive`  | 归档浏览 | InteractiveAuto   | 是     |
-
-## Roadmap
-
-### Phase 1 — 基础设施
-
-- [x] .NET 10 Blazor Web App 项目搭建
-- [x] EF Core + SQLite 数据层配置
-- [x] 数据模型定义（User, TodoItem, TodoStep）
-- [x] Cookie 认证基础设施搭建
-- [x] MudBlazor 集成与主题配置
-
-### Phase 2 — 用户系统
-
-- [x] `/register` 注册页：BCrypt 密码哈希，用户名唯一校验
-- [x] `/login` 登录页：Cookie 认证，失败防用户枚举
-- [x] `/` 首页：自动跳转 `/todos`（已登录）或 `/login`（未登录）
-- [x] 登出功能
-- [x] 用户空间隔离（所有查询带 `UserId` 过滤）
-
-### Phase 3 — 看板核心
-
-- [x] 看板数据模型与数据库迁移（TodoItem: Title, Description, Priority, Tags, DueDate, DueWarningHours, Status, SortOrder, CreatedAt, UpdatedAt）
-- [x] `/todos` 看板页：5 泳道横向滚动布局 + 临期提醒条
-- [x] 新建任务（任意泳道底部输入）
-- [x] 任务卡片展示（标题、描述、优先级、标签徽章、截止时间着色、流转按钮）
-- [x] 行内编辑（标题、描述、截止时间、优先级、标签、临期阈值）
-- [x] 泳道流转按钮（状态门禁：步骤全部完成方可进已完成；冻结→解冻到未开始）
-- [x] 删除任务（确认后硬删除）
-- [x] 拖拽泳道间移动（受流转约束）
-- [x] 泳道内排序（截止时间加权降序 → 优先级降序 → SortOrder 升序）
-- [x] 临期提醒条（横向顶部通栏，阈值默认 48h 可自定义，最多 8 条，超 7 天过期自动移除）
-- [x] 看板搜索框（标题 + 标签实时过滤，URL 参数 `?q=`）
-
-### Phase 4 — 子步骤
-
-- [x] 子步骤数据模型与迁移
-- [x] 展开/折叠步骤列表
-- [x] 动态增删子步骤
-- [x] Checkbox 切换完成状态
-- [x] 步骤完成门禁（全部完成方可流转至已完成泳道）
-- [x] 子步骤排序
-
-### Phase 5 — 归档系统
-
-- [x] 归档操作（仅"已完成"泳道任务，不可逆）
-- [x] 自动归档（已完成超 7 天自动归档）
-- [x] `/archive` 归档浏览页（按归档时间倒序）
-- [x] 筛选：标签模糊匹配、日期范围、标题关键词搜索
-
-### Phase 6 — 交付打磨
-
-- [ ] 错误处理与异常页面
-- [ ] 前端表单验证
-- [ ] 响应式适配
-- [x] `linux-x64` 发布与部署文档
-
-## 项目结构
-
-```
-TaTaTask/
-├── TaTaTask.slnx                       # 解决方案文件
-├── requirements.md                     # 需求说明书
-├── README.md
-│
-├── TaTaTask/                           # ASP.NET Core 宿主（Server）
-│   ├── TaTaTask.csproj                 #   引用 Client + Models
-│   ├── Program.cs                      #   入口：认证、路由、WASM 调试
-│   ├── Components/
-│   │   ├── App.razor                   #   HTML 壳（<head> + <body>）
-│   │   ├── Routes.razor                #   Blazor Router
-│   │   ├── _Imports.razor
-│   │   ├── Layout/
-│   │   │   ├── MainLayout.razor/.css   #   主布局（侧栏 + 内容区）
-│   │   │   ├── NavMenu.razor/.css      #   导航菜单
-│   │   │   └── ReconnectModal.razor/   #   Blazor Server 重连弹窗
-│   │   └── Pages/
-│   │       ├── Home.razor              #   /      首页
-│   │       ├── Error.razor             #   /Error 错误页
-│   │       └── NotFound.razor          #   404 页
-│   ├── Properties/launchSettings.json
-│   └── wwwroot/
-│       ├── app.css
-│       └── lib/bootstrap/              #   静态 Bootstrap 资源
-│
-├── TaTaTask.Client/                    # Blazor WebAssembly 组件
-│   ├── TaTaTask.Client.csproj          #   引用 Models
-│   ├── Program.cs                      #   WASM 启动入口
-│   ├── _Imports.razor
-│   └── Pages/
-│       └── Counter.razor               #   /counter 示例页（将替换为 /todos）
-│
-└── TaTaTask.Models/                    # 共享类型库（Server ↔ Client）
-    ├── TaTaTask.Models.csproj
-    ├── Enums/
-    │   └── TodoStatus.cs               # 泳道枚举
-    ├── Entities/
-    │   ├── User.cs                     # 用户实体
-    │   ├── TodoItem.cs                 # 任务实体
-    │   └── TodoStep.cs                 # 子步骤实体
-    └── Dtos/
-        ├── LoginRequest.cs
-        ├── RegisterRequest.cs
-        └── TodoItemDto.cs
-```
-
-### 依赖关系
-
-```
-TaTaTask (Server)       引用 → TaTaTask.Client
-       │                          │
-       └──────── 引用 ────────────┘
-                  ↓
-           TaTaTask.Models (共享类型)
-```
-
-- **Server**：承载 SSR 页面（登录/注册）、API、EF Core 数据层，通过 `AddAdditionalAssemblies` 发现 Client 的 InteractiveAuto 组件
-- **Client**：WASM 组件，看板、归档等交互页面在此实现
-- **Models**：实体、枚举、DTO，Server 和 Client 共同引用，避免循环依赖
+---
 
 ## 快速开始
 
+### 前置条件
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
+
+### 开发运行
+
 ```bash
-# 克隆仓库
-git clone <repo-url> && cd TaTaTask
+git clone https://github.com/TomDan-GodsHand/TaTaTask.git
+cd TaTaTask
 
 # 安装 EF Core 工具
 dotnet tool restore
 
-# 运行数据库迁移
-dotnet ef database update
+# 初始化数据库
+dotnet ef database update --project TaTaTask
 
 # 启动开发服务器
 dotnet run --project TaTaTask
 ```
 
-打开 `https://localhost:7162` 即可访问。
-
-## 发布（GitHub Actions 自动构建）
-
-基于 git tag 驱动，推送 tag 自动触发 CI/CD 构建并创建 GitHub Release：
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-工作流（`.github/workflows/release.yml`）：
-1. 安装 .NET 10 SDK
-2. `dotnet publish` → `linux-x64` 自包含单文件
-3. 打包为 `tatatask-{version}-linux-x64.tar.gz`
-4. 创建 GitHub Release 并附带构建产物
-
-版本号写入程序集（`TaTaTask.csproj` → `<Version>`），可在设置页面底部查看当前运行版本。
+打开 `https://localhost:5001`（或 HTTP `http://localhost:5000`）。
 
 ---
 
-## 部署到 systemd（linux-x64）
+## 部署到生产环境 (linux-x64)
 
-### 方式一：手动部署
+### 一键更新脚本（推荐）
 
 ```bash
-dotnet publish TaTaTask -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o ./publish
+curl -sL https://raw.githubusercontent.com/TomDan-GodsHand/TaTaTask/main/deploy/update.sh -o update.sh
+chmod +x update.sh
+sudo ./update.sh
 ```
 
+`update.sh` 自动完成：
+
+1. **自更新检查** — 脚本先检查组自身是否有新版本
+2. 下载最新 GitHub Release 压缩包
+3. 备份当前版本和配置文件
+4. 停止服务 → 解压 → 还原配置
+5. 运行数据库迁移 (`--migrate-only`)
+6. 设置权限 → 安装/重载 systemd → 启动服务
+
+以后每次发新版只需 `sudo ./update.sh`。
+
+### 手动部署
+
 ```bash
+dotnet publish TaTaTask -c Release -r linux-x64 --self-contained -o publish
+
 sudo mkdir -p /opt/tatatask/ssl
-sudo cp your-cert.pfx /opt/tatatask/ssl/tatatask.pfx
-sudo useradd -r -s /usr/sbin/nologin tatatask   # 首次运行只需执行一次
+sudo cp -r publish/* /opt/tatatask/
+sudo useradd -r -s /usr/sbin/nologin tatatask
 sudo chown -R tatatask:tatatask /opt/tatatask
-sudo chmod 700 /opt/tatatask/ssl
-sudo chmod 600 /opt/tatatask/ssl/tatatask.pfx
+sudo chmod +x /opt/tatatask/TaTaTask
+
 sudo cp deploy/tatatask.service /usr/lib/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now tatatask
 ```
 
-### 方式二：一键部署/更新脚本（Arch Linux 推荐）
+### 定时自动更新
 
-首次部署：
-
-```bash
-curl -sL https://raw.githubusercontent.com/TomDan-GodsHand/TaTaTask/master/deploy/update.sh -o update.sh
-chmod +x update.sh
-./update.sh
-```
-
-之后每次发布新版本，只需一行：
-
-```bash
-./update.sh
-```
-
-`update.sh` 自动完成：检查最新 Release → 下载 `tar.gz` → 停止服务 → 解压到 `/opt/tatatask` → 安装 systemd 服务 → 启动。
-
-#### 定时自动更新（可选）
-
-```bash
+```ini
 # /etc/systemd/system/tatatask-update.service
 [Unit]
 Description=Update TaTaTask
-
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/update-tatatask
-```
 
-```bash
 # /etc/systemd/system/tatatask-update.timer
 [Unit]
 Description=Weekly TaTaTask update check
-
 [Timer]
 OnCalendar=weekly
 Persistent=true
-
 [Install]
 WantedBy=timers.target
 ```
@@ -255,39 +169,7 @@ sudo cp update.sh /usr/local/bin/update-tatatask
 sudo systemctl enable --now tatatask-update.timer
 ```
 
-### 配置 HTTPS/SSL
-
-Kestrel 端口和证书通过 `appsettings.json` 配置（运行时生效），默认监听 HTTP:5000 + HTTPS:5001。
-
-**1. 部署证书（首次）**
-
-```bash
-# PFX 格式（推荐，含证书+私钥，单文件）
-sudo cp your-cert.pfx /opt/tatatask/ssl/tatatask.pfx
-sudo chown tatatask:tatatask /opt/tatatask/ssl/tatatask.pfx
-sudo chmod 600 /opt/tatatask/ssl/tatatask.pfx
-
-# 如果证书有密码，修改 appsettings.json:
-# "Certificate": { "Path": "ssl/tatatask.pfx", "Password": "你的密码" }
-```
-
-**2. 仅 HTTP（不需要 HTTPS）**
-
-注释掉或删除 `appsettings.json` 里的 `Https` 节点，systemd service 里取消注释 `ASPNETCORE_URLS`。
-
-**3. 仅 HTTPS（强制）**
-
-删除 `Http` 节点，只保留 `Https`。
-
-**4. 自定义端口**
-
-修改 `appsettings.json` 里的端口号，或 systemd service 里设置 `ASPNETCORE_URLS` 环境变量（优先级高于配置）。
-
-> 证书 `ssl/` 目录不在发布包中，更新不会覆盖已有证书。
-
 ### 日志
-
-`TaTaTask` 通过 `Host.UseSystemd()` 与 systemd 集成：`Type=notify` 就绪通知、`SIGTERM` 优雅停止，日志自动对接 systemd journal（`StandardOutput=journal`）。
 
 ```bash
 journalctl -u tatatask -f
@@ -296,9 +178,103 @@ journalctl -u tatatask -f
 ### 卸载
 
 ```bash
-curl -sL https://raw.githubusercontent.com/TomDan-GodsHand/TaTaTask/master/deploy/uninstall.sh -o uninstall.sh
+curl -sL https://raw.githubusercontent.com/TomDan-GodsHand/TaTaTask/main/deploy/uninstall.sh -o uninstall.sh
 chmod +x uninstall.sh
 ./uninstall.sh
 ```
 
-脚本会依次：停止服务 → 禁用 systemd → 删除程序目录 `/opt/tatatask` → 删除数据库 → 可选删除 `tatatask` 用户。
+---
+
+## 项目结构
+
+```
+TaTaTask/
+├── TaTaTask.slnx
+├── .github/workflows/release.yml     # CI/CD 自动构建
+├── deploy/
+│   ├── update.sh                     # 一键部署/更新脚本
+│   ├── uninstall.sh                  # 卸载脚本
+│   └── tatatask.service              # systemd 单元文件
+│
+├── TaTaTask/                         # ASP.NET Core 服务端
+│   ├── Program.cs                    # 入口：认证、路由、迁移
+│   ├── Services/
+│   │   └── ServerTodoService.cs      # 业务逻辑 + EF Core 查询
+│   ├── Controllers/
+│   │   ├── TodoController.cs         # 任务 CRUD API
+│   │   ├── StatsController.cs        # 统计数据 API
+│   │   ├── ArchiveController.cs      # 归档 API
+│   │   └── UserController.cs         # 用户 API
+│   ├── Data/AppDbContext.cs          # EF Core DbContext
+│   ├── Migrations/                   # 数据库迁移文件
+│   └── wwwroot/app.css               # 全局样式
+│
+├── TaTaTask.Client/                  # Blazor WebAssembly 组件
+│   ├── Services/
+│   │   ├── ITodoService.cs           # 服务接口
+│   │   └── ClientTodoService.cs      # HTTP 客户端实现
+│   └── Pages/
+│       ├── Todos.razor               # 看板页面
+│       ├── Archive.razor             # 归档浏览
+│       └── Stats.razor               # 数据统计
+│
+└── TaTaTask.Models/                  # 共享类型库
+    ├── Entities/                     # 数据库实体
+    ├── Dtos/                         # 请求/响应模型
+    └── Enums/TodoStatus.cs           # 泳道状态枚举
+```
+
+---
+
+## 发布流程
+
+推送版本标签触发 GitHub Actions 自动构建：
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+工作流自动完成：
+1. `dotnet publish` → `linux-x64` 自包含发布
+2. 打包 `tatatask-{version}-linux-x64.tar.gz`（含 systemd service 文件）
+3. 创建 GitHub Release 附带构建产物
+
+版本号写入程序集，可在设置页面底部查看。
+
+---
+
+## Roadmap
+
+- [x] 用户注册/登录（Cookie + BCrypt）
+- [x] 看板泳道管理（未开始 → 进行中 → 已完成）
+- [x] 任务 CRUD + 行内编辑
+- [x] 优先级、标签、截止时间
+- [x] 子步骤（增删 + 勾选完成 + 门禁）
+- [x] 冻结机制（原因记录 + 时长追踪 + 原状态恢复）
+- [x] 临期提醒 + 过期自动清理
+- [x] 归档系统（手动 + 自动 + 历史浏览）
+- [x] 数据统计大盘（指标卡 + 冻结清单 + 完成趋势）
+- [x] `linux-x64` 一键部署脚本（自更新 + 数据库迁移）
+- [ ] 移动端 PWA 适配
+- [ ] 深色模式
+- [ ] 多用户协作
+- [ ] Docker 镜像
+
+---
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request。
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
+3. 提交改动 (`git commit -m 'Add amazing feature'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 创建 Pull Request
+
+---
+
+## 许可
+
+[MIT License](LICENSE.txt)
