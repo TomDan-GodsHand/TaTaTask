@@ -89,11 +89,21 @@ h1:focus {
 }
 
 .kanban-lane-frozen {
-    background: linear-gradient(180deg, #e8f4fd 0%, #d0ebfa 40%, #e8f4fd 100%);
+    position: relative;
 }
-
-.kanban-lane-frozen .mud-card {
-    border-color: #b3d9f2 !important;
+.kanban-lane-frozen .kanban-lane-cards {
+    position: relative;
+    z-index: 1;
+}
+.kanban-lane-frozen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("img/snowflake.png");
+    background-repeat: repeat;
+    opacity: 1;
+    pointer-events: none;
+    z-index: 0;
 }
 
 .kanban-lane-cards {
