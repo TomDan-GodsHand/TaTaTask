@@ -68,7 +68,7 @@ sudo chmod +x "${INSTALL_DIR}/TaTaTask"
 sudo chown -R tatatask:tatatask "${INSTALL_DIR}"
 
 echo "==> 更新数据库结构..."
-sudo -u tatatask "${INSTALL_DIR}/TaTaTask" --migrate-only
+sudo -u tatatask bash -c "cd ${INSTALL_DIR} && ./TaTaTask --migrate-only"
 
 echo "==> 安装 systemd 服务(首次) 或重载..."
 if [ -f "${INSTALL_DIR}/${SERVICE}" ]; then
