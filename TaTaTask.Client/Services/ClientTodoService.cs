@@ -39,9 +39,9 @@ public class ClientTodoService : ITodoService
         return resp.IsSuccessStatusCode;
     }
 
-    public async Task<TodoItemDto> ChangeStatusAsync(int id, TodoStatus status, string? frozenReason = null)
+    public async Task<TodoItemDto> ChangeStatusAsync(int id, TodoStatus status, string? frozenReason = null, bool resetSteps = false)
     {
-        var resp = await _http.PostAsJsonAsync($"api/todos/{id}/status", new ChangeStatusRequest { Status = status, FrozenReason = frozenReason });
+        var resp = await _http.PostAsJsonAsync($"api/todos/{id}/status", new ChangeStatusRequest { Status = status, FrozenReason = frozenReason, ResetSteps = resetSteps });
         if (!resp.IsSuccessStatusCode)
         {
             var msg = await resp.Content.ReadAsStringAsync();

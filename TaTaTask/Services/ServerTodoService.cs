@@ -145,7 +145,7 @@ public class ServerTodoService : ITodoService
         return true;
     }
 
-    public async Task<TodoItemDto> ChangeStatusAsync(int id, TodoStatus status, string? frozenReason = null)
+    public async Task<TodoItemDto> ChangeStatusAsync(int id, TodoStatus status, string? frozenReason = null, bool resetSteps = false)
     {
         var item = await _db.TodoItems.Include(t => t.Steps)
             .FirstOrDefaultAsync(t => t.Id == id && t.UserId == Uid)
@@ -176,6 +176,14 @@ public class ServerTodoService : ITodoService
         else if (status != TodoStatus.Done)
         {
             item.DoneAt = null;
+        }
+
+        if (resetSteps)
+        {
+            foreach (var step in item.Steps)
+            {
+                step.IsCompleted = false;
+            }
         }
 
         item.Status = status;
