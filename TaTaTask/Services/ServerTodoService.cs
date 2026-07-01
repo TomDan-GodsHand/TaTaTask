@@ -94,19 +94,44 @@ public class ServerTodoService : ITodoService
         return ToDto(item);
     }
 
-    public async Task<TodoItemDto?> UpdateAsync(int id, TodoItemDto dto)
+    public async Task<TodoItemDto?> UpdateAsync(int id, UpdateTodoRequest request)
     {
         var item = await _db.TodoItems.Include(t => t.Steps)
             .FirstOrDefaultAsync(t => t.Id == id && t.UserId == Uid);
         if (item is null) return null;
 
-        item.Title = dto.Title.Trim();
-        item.Description = dto.Description;
-        item.Priority = dto.Priority;
-        item.Tags = dto.Tags;
-        item.DueDate = dto.DueDate;
-        item.DueWarningHours = dto.DueWarningHours;
+        item.Title = request.Title.Trim();
+        item.Description = request.Description;
+        item.Priority = request.Priority;
+        item.Tags = request.Tags;
+        item.DueDate = request.DueDate;
+        item.DueWarningHours = request.DueWarningHours;
         item.UpdatedAt = DateTime.UtcNow;
+
+        if (request.StepIdsToDelete is { Count: > 0 })
+        {
+            var toRemove = item.Steps.Where(s => request.StepIdsToDelete.Contains(s.Id)).ToList();
+            _db.TodoSteps.RemoveRange(toRemove);
+        }
+
+        if (request.StepsToAdd is { Count: > 0 })
+        {
+            var sort = item.Steps.Count > 0 ? item.Steps.Max(s => s.SortOrder) : 0;
+            foreach (var title in request.StepsToAdd)
+            {
+                if (!string.IsNullOrWhiteSpace(title))
+                {
+                    item.Steps.Add(new TodoStep
+                    {
+                        TodoItemId = item.Id,
+                        UserId = Uid,
+                        Title = title.Trim(),
+                        SortOrder = ++sort,
+                    });
+                }
+            }
+        }
+
         await _db.SaveChangesAsync();
         return ToDto(item);
     }

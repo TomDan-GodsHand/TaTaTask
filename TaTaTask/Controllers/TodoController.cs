@@ -30,9 +30,9 @@ public class TodoController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    public async Task<ActionResult<TodoItemDto>> Update(int id, TodoItemDto dto)
+    public async Task<ActionResult<TodoItemDto>> Update(int id, UpdateTodoRequest request)
     {
-        var updated = await _service.UpdateAsync(id, dto);
+        var updated = await _service.UpdateAsync(id, request);
         return updated is null ? NotFound() : updated;
     }
 
