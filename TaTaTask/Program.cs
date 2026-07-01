@@ -66,6 +66,12 @@ namespace TaTaTask
                 logger.LogInformation("Database migration applied; TaTaTask starting in {Environment} environment.", app.Environment.EnvironmentName);
             }
 
+            if (args.Contains("--migrate-only"))
+            {
+                logger.LogInformation("--migrate-only mode: migration completed, exiting.");
+                return;
+            }
+
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {

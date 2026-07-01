@@ -45,7 +45,7 @@ public class TodoController : ControllerBase
     {
         try
         {
-            return await _service.ChangeStatusAsync(id, request.Status);
+            return await _service.ChangeStatusAsync(id, request.Status, request.FrozenReason);
         }
         catch (KeyNotFoundException)
         {

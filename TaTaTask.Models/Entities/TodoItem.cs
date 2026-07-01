@@ -20,6 +20,9 @@ public class TodoItem
     public bool IsArchived { get; set; }
     public DateTime? ArchivedAt { get; set; }
     public DateTime? DoneAt { get; set; }
+    public TodoStatus? PreviousStatus { get; set; }
+    public string? FrozenReason { get; set; }
+    public DateTime? FrozeAt { get; set; }
 
     public User? User { get; set; }
     public ICollection<TodoStep> Steps { get; set; } = new List<TodoStep>();

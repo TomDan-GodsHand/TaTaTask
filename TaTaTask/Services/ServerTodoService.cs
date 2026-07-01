@@ -145,7 +145,7 @@ public class ServerTodoService : ITodoService
         return true;
     }
 
-    public async Task<TodoItemDto> ChangeStatusAsync(int id, TodoStatus status)
+    public async Task<TodoItemDto> ChangeStatusAsync(int id, TodoStatus status, string? frozenReason = null)
     {
         var item = await _db.TodoItems.Include(t => t.Steps)
             .FirstOrDefaultAsync(t => t.Id == id && t.UserId == Uid)
@@ -154,6 +154,19 @@ public class ServerTodoService : ITodoService
         if (status == TodoStatus.Done && item.Steps.Any(s => !s.IsCompleted))
         {
             throw new InvalidOperationException("所有子步骤完成后才能进入已完成");
+        }
+
+        if (status == TodoStatus.Frozen && item.Status != TodoStatus.Frozen)
+        {
+            item.PreviousStatus = item.Status;
+            item.FrozenReason = frozenReason;
+            item.FrozeAt = DateTime.UtcNow;
+        }
+        else if (item.Status == TodoStatus.Frozen && status != TodoStatus.Frozen)
+        {
+            item.PreviousStatus = null;
+            item.FrozenReason = null;
+            item.FrozeAt = null;
         }
 
         if (status == TodoStatus.Done && item.Status != TodoStatus.Done)
@@ -302,6 +315,69 @@ public class ServerTodoService : ITodoService
         };
     }
 
+    public async Task<DashboardStatsDto> GetStatsAsync()
+    {
+        var now = DateTime.UtcNow;
+        var today = now.Date;
+
+        var activeItems = await _db.TodoItems
+            .Include(t => t.Steps)
+            .Where(t => t.UserId == Uid && !t.IsArchived
+                && t.Status != TodoStatus.Done && t.Status != TodoStatus.Frozen)
+            .ToListAsync();
+
+        var doneToday = await _db.TodoItems
+            .CountAsync(t => t.UserId == Uid && t.DoneAt >= today);
+
+        var frozenItems = await _db.TodoItems
+            .Where(t => t.UserId == Uid && !t.IsArchived && t.Status == TodoStatus.Frozen
+                && t.FrozeAt != null)
+            .OrderByDescending(t => t.FrozeAt)
+            .ToListAsync();
+
+        var overdueCount = await _db.TodoItems
+            .CountAsync(t => t.UserId == Uid && !t.IsArchived
+                && t.Status != TodoStatus.Done && t.Status != TodoStatus.Frozen
+                && t.DueDate < now);
+
+        var totalSteps = activeItems.Sum(t => t.Steps.Count);
+        var completedSteps = activeItems.Sum(t => t.Steps.Count(s => s.IsCompleted));
+
+        var frozenList = frozenItems.Select(t => new FrozenItemDto
+        {
+            Id = t.Id,
+            Title = t.Title,
+            DaysFrozen = (int)((now - t.FrozeAt!.Value).TotalDays),
+            FrozenReason = t.FrozenReason,
+        }).ToList();
+
+        var daily = new List<DailyDoneDto>();
+        for (int i = 6; i >= 0; i--)
+        {
+            var day = today.AddDays(-i);
+            var next = day.AddDays(1);
+            var count = await _db.TodoItems
+                .CountAsync(t => t.UserId == Uid && t.DoneAt >= day && t.DoneAt < next);
+            daily.Add(new DailyDoneDto
+            {
+                Date = day.ToString("MM/dd"),
+                Count = count,
+            });
+        }
+
+        return new DashboardStatsDto
+        {
+            ActiveCount = activeItems.Count,
+            DoneTodayCount = doneToday,
+            FrozenCount = frozenItems.Count,
+            OverdueCount = overdueCount,
+            TotalStepsActive = totalSteps,
+            CompletedStepsActive = completedSteps,
+            FrozenItems = frozenList,
+            DailyDone = daily,
+        };
+    }
+
     private async Task AutoArchiveAsync()
     {
         var cutoff = DateTime.UtcNow.AddDays(-7);
@@ -355,6 +431,9 @@ public class ServerTodoService : ITodoService
         IsArchived = t.IsArchived,
         ArchivedAt = t.ArchivedAt,
         DoneAt = t.DoneAt,
+        PreviousStatus = t.PreviousStatus,
+        FrozenReason = t.FrozenReason,
+        FrozeAt = t.FrozeAt,
         Steps = t.Steps.OrderBy(s => s.SortOrder).Select(s => new TodoStepDto
         {
             Id = s.Id,

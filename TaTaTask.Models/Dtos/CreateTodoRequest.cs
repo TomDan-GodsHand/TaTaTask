@@ -17,4 +17,5 @@ public class CreateTodoRequest
 public class ChangeStatusRequest
 {
     public TodoStatus Status { get; set; }
+    public string? FrozenReason { get; set; }
 }

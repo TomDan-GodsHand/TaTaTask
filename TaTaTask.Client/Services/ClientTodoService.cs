@@ -39,9 +39,9 @@ public class ClientTodoService : ITodoService
         return resp.IsSuccessStatusCode;
     }
 
-    public async Task<TodoItemDto> ChangeStatusAsync(int id, TodoStatus status)
+    public async Task<TodoItemDto> ChangeStatusAsync(int id, TodoStatus status, string? frozenReason = null)
     {
-        var resp = await _http.PostAsJsonAsync($"api/todos/{id}/status", new ChangeStatusRequest { Status = status });
+        var resp = await _http.PostAsJsonAsync($"api/todos/{id}/status", new ChangeStatusRequest { Status = status, FrozenReason = frozenReason });
         if (!resp.IsSuccessStatusCode)
         {
             var msg = await resp.Content.ReadAsStringAsync();
@@ -88,6 +88,11 @@ public class ClientTodoService : ITodoService
         if (to.HasValue) parts.Add($"to={to.Value:yyyy-MM-dd}");
         var url = "api/archive" + (parts.Count > 0 ? "?" + string.Join("&", parts) : string.Empty);
         return await _http.GetFromJsonAsync<List<TodoItemDto>>(url) ?? new();
+    }
+
+    public async Task<DashboardStatsDto> GetStatsAsync()
+    {
+        return await _http.GetFromJsonAsync<DashboardStatsDto>("api/stats") ?? new();
     }
 
     public async Task<UserSettingsDto> GetUserSettingsAsync()

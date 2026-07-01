@@ -59,7 +59,7 @@
 <div class="kanban-board">
     @foreach (var status in Lanes)
     {
-        <div class="kanban-lane">
+        <div class="kanban-lane @(status == TodoStatus.Frozen ? "kanban-lane-frozen" : "")">
             <div class="d-flex align-center px-1 py-1">
                 <MudText Typo="Typo.subtitle1"><b>@StatusName(status)</b></MudText>
                 <MudChip T="string" Size="Size.Small" Class="ml-2">@Lane(status).Count()</MudChip>
@@ -164,11 +164,22 @@
                                             <MudText Color="Color.Error" Style="font-weight:700;">@pri</MudText>
                                         }
                                     </div>
+                                    @if (!string.IsNullOrWhiteSpace(task.FrozenReason) || task.FrozeAt is not null)
+                                    {
+                                        <div class="mt-1 d-flex align-center" style="gap:4px;">
+                                            <MudText Typo="Typo.caption" Color="Color.Info">
+                                                冻结 @FrozenDuration(task)
+                                            </MudText>
+                                            @if (!string.IsNullOrWhiteSpace(task.FrozenReason))
+                                            {
+                                                <MudText Typo="Typo.caption" Style="opacity:.7;">· @task.FrozenReason</MudText>
+                                            }
+                                        </div>
+                                    }
                                 </MudCardContent>
                                 <MudCardActions Class="pa-1">
                                     <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small"
-                                                   OnClick="@(() => ChangeStatus(task, TodoStatus.NotStarted))" />
-                                    <MudSpacer />
+                                                   OnClick="@(() => ChangeStatus(task, task.PreviousStatus ?? TodoStatus.NotStarted))" />
                                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
                                                    OnClick="@(() => BeginEdit(task))" />
                                     <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
@@ -219,6 +230,17 @@
                                         </div>
                                     }
 
+                                    @if (task.Status == TodoStatus.Frozen && (!string.IsNullOrWhiteSpace(task.FrozenReason) || task.FrozeAt is not null))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Info" Class="mt-1">
+                                            <MudIcon Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small" /> 冻结 @FrozenDuration(task)
+                                            @if (!string.IsNullOrWhiteSpace(task.FrozenReason))
+                                            {
+                                                <span style="opacity:.7;"> · @task.FrozenReason</span>
+                                            }
+                                        </MudText>
+                                    }
+
                                     @if (_expanded.Contains(task.Id))
                                     {
                                         <MudDivider Class="my-2" />
@@ -256,12 +278,12 @@
                                     @if (status != TodoStatus.Frozen && status != TodoStatus.Done)
                                     {
                                         <MudIconButton Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small"
-                                                       OnClick="@(() => ChangeStatus(task, TodoStatus.Frozen))" />
+                                                       OnClick="@(() => OpenFreeze(task))" />
                                     }
                                     @if (status == TodoStatus.Frozen)
                                     {
                                         <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small"
-                                                       OnClick="@(() => ChangeStatus(task, TodoStatus.NotStarted))" />
+                                                       OnClick="@(() => ChangeStatus(task, task.PreviousStatus ?? TodoStatus.NotStarted))" />
                                     }
                                     @if (status == TodoStatus.Done)
                                     {
@@ -362,6 +384,25 @@
     </div>
 }
 
+@if (_freezeTargetId is not null)
+{
+    <div style="position:fixed; inset:0; background-color:rgba(0,0,0,0.5); z-index:9990;"></div>
+    <div style="position:fixed; inset:0; z-index:9991; display:flex; align-items:center; justify-content:center; padding:16px;">
+        <MudPaper Class="pa-5" Elevation="8" Style="width:420px; max-width:100%;">
+            <MudText Typo="Typo.h6" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small" Class="mr-1" /> 冻结任务
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mb-3 mud-text-secondary">将任务移入冰箱暂停推进，需要填写冻结原因。</MudText>
+            <MudTextField @bind-Value="_freezeReason" Label="冻结原因" Lines="2" Margin="Margin.Dense" Immediate="true" />
+            <div class="d-flex justify-end mt-4" style="gap:8px;">
+                <MudButton OnClick="CancelFreeze">取消</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           Disabled="@string.IsNullOrWhiteSpace(_freezeReason)" OnClick="ConfirmFreeze">确认冻结</MudButton>
+            </div>
+        </MudPaper>
+    </div>
+}
+
 <div class="app-bottom-bar">
     <MudPaper Elevation="0" Class="app-search rounded-pill px-3">
         <MudTextField @bind-Value="_search" Immediate="true" Placeholder="搜索标题或标签"
@@ -379,7 +420,7 @@
 
     private static readonly TodoStatus[] Lanes =
     {
-        TodoStatus.NotStarted, TodoStatus.InProgress, TodoStatus.Converging, TodoStatus.Done, TodoStatus.Frozen
+        TodoStatus.NotStarted, TodoStatus.InProgress, TodoStatus.Done, TodoStatus.Frozen
     };
 
     [SupplyParameterFromQuery(Name = "q")]
@@ -416,6 +457,9 @@
     private bool _showAllDue;
     private readonly HashSet<int> _expanded = new();
     private readonly Dictionary<int, string> _newStepInput = new();
+
+    private int? _freezeTargetId;
+    private string _freezeReason = string.Empty;
 
     private int _settingsDefaultWarningHours = 48;
     private int _settingsDefaultDueDays = 3;
@@ -458,7 +502,11 @@
         }
     }
 
-    private IEnumerable<TodoItemDto> Lane(TodoStatus status) => _tasks.Where(t => t.Status == status);
+    private IEnumerable<TodoItemDto> Lane(TodoStatus status) => status switch
+    {
+        TodoStatus.InProgress => _tasks.Where(t => t.Status == TodoStatus.InProgress || t.Status == TodoStatus.Converging),
+        _ => _tasks.Where(t => t.Status == status),
+    };
 
     private IEnumerable<TodoItemDto> DueSoon()
     {
@@ -505,6 +553,26 @@
     }
 
     private void CloseCreate() => _showCreate = false;
+
+    private void OpenFreeze(TodoItemDto task)
+    {
+        _freezeTargetId = task.Id;
+        _freezeReason = string.Empty;
+    }
+
+    private void CancelFreeze() => _freezeTargetId = null;
+
+    private async Task ConfirmFreeze()
+    {
+        if (_freezeTargetId is not { } targetId || string.IsNullOrWhiteSpace(_freezeReason)) return;
+
+        var task = _tasks.FirstOrDefault(t => t.Id == targetId);
+        if (task is null) return;
+
+        var reason = _freezeReason.Trim();
+        _freezeTargetId = null;
+        await ChangeStatus(task, TodoStatus.Frozen, reason);
+    }
 
     private async Task SubmitCreate()
     {
@@ -612,11 +680,17 @@
         if (e.Key == "Enter") AddEditStep();
     }
 
-    private async Task ChangeStatus(TodoItemDto task, TodoStatus status)
+    private async Task ChangeStatus(TodoItemDto task, TodoStatus status, string? frozenReason = null)
     {
+        if (status == TodoStatus.Done)
+        {
+            if (!await JS.InvokeAsync<bool>("confirm", $"确认将任务\u201c{task.Title}\u201d标记为已完成？"))
+                return;
+        }
+
         try
         {
-            await TodoService.ChangeStatusAsync(task.Id, status);
+            await TodoService.ChangeStatusAsync(task.Id, status, frozenReason);
             _error = null;
             await LoadAsync();
         }
@@ -724,7 +798,7 @@
     private static TodoStatus? NextStatus(TodoStatus status) => status switch
     {
         TodoStatus.NotStarted => TodoStatus.InProgress,
-        TodoStatus.InProgress => TodoStatus.Converging,
+        TodoStatus.InProgress => TodoStatus.Done,
         TodoStatus.Converging => TodoStatus.Done,
         _ => null,
     };
@@ -756,6 +830,17 @@
             return "已逾期";
         }
         return span.TotalHours < 24 ? $"剩 {(int)span.TotalHours}h" : $"剩 {(int)span.TotalDays}d";
+    }
+
+    private static string FrozenDuration(TodoItemDto task)
+    {
+        if (task.FrozeAt is not { } frozeAt) return string.Empty;
+        var days = (int)((DateTime.UtcNow - frozeAt).TotalDays);
+        return days switch
+        {
+            0 => "不到1天",
+            _ => $"{days}天",
+        };
     }
 
     private static Color DueColor(DateTime? due)
