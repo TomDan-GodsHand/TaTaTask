@@ -63,11 +63,14 @@ namespace TaTaTask
 
             var logger = app.Services.GetRequiredService<ILogger<Program>>();
 
+            DumpStartupDiagnostics(app, logger);
+
             using (var scope = app.Services.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                logger.LogInformation("[Step 4/6] Database migration starting...");
                 db.Database.Migrate();
-                logger.LogInformation("Database migration applied; TaTaTask starting in {Environment} environment.", app.Environment.EnvironmentName);
+                logger.LogInformation("[Step 4/6] Database migration OK; TaTaTask starting in {Environment} environment.", app.Environment.EnvironmentName);
             }
 
             if (args.Contains("--migrate-only"))
@@ -80,18 +83,20 @@ namespace TaTaTask
             if (app.Environment.IsDevelopment())
             {
                 app.UseWebAssemblyDebugging();
+                logger.LogInformation("[Step 5/6] Middleware: WebAssemblyDebugging enabled (Development)");
             }
             else
             {
                 app.UseExceptionHandler("/Error");
-                // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
                 app.UseHsts();
+                logger.LogInformation("[Step 5/6] Middleware: ExceptionHandler + HSTS enabled (Production)");
             }
 
             app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 
             if (app.Configuration.GetValue<bool>("ReverseProxy"))
             {
+                logger.LogInformation("[Step 5/6] Middleware: ForwardedHeaders (ReverseProxy=true)");
                 app.UseForwardedHeaders(new ForwardedHeadersOptions
                 {
                     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
@@ -102,6 +107,7 @@ namespace TaTaTask
             }
             else
             {
+                logger.LogInformation("[Step 5/6] Middleware: HttpsRedirection (ReverseProxy=false)");
                 app.UseHttpsRedirection();
             }
 
@@ -125,7 +131,42 @@ namespace TaTaTask
                 return Results.LocalRedirect("/login");
             });
 
+            logger.LogInformation("[Step 6/6] Kestrel binding...");
             app.Run();
+        }
+
+        private static void DumpStartupDiagnostics(WebApplication app, ILogger logger)
+        {
+            var env = app.Environment;
+            var config = app.Configuration;
+
+            logger.LogInformation("================================================");
+            logger.LogInformation("[DIAG] TaTaTask Startup Diagnostics");
+            logger.LogInformation("================================================");
+
+            logger.LogInformation("[Step 1/6] Environment:");
+            logger.LogInformation("  EnvironmentName : {Env}", env.EnvironmentName);
+            logger.LogInformation("  ContentRootPath : {Path}", env.ContentRootPath);
+            logger.LogInformation("  WebRootPath     : {Path}", env.WebRootPath);
+
+            logger.LogInformation("[Step 2/6] Configuration sources (load order):");
+            foreach (var src in ((IConfigurationRoot)config).Providers)
+            {
+                logger.LogInformation("  - {Source}", src);
+            }
+
+            logger.LogInformation("[Step 3/6] Resolved config values:");
+            var kestrel = config.GetSection("Kestrel:Endpoints");
+            foreach (var ep in kestrel.GetChildren())
+            {
+                var url = ep.GetValue<string>("Url");
+                logger.LogInformation("  Kestrel:Endpoints:{Name}  Url={Url}", ep.Key, url ?? "(null)");
+            }
+            var rp = config.GetValue<bool?>("ReverseProxy");
+            logger.LogInformation("  ReverseProxy     : {Val}", rp);
+            var conn = config.GetConnectionString("Default");
+            logger.LogInformation("  ConnectionString : {Val}", conn);
+            logger.LogInformation("================================================");
         }
     }
 }

@@ -216,8 +216,15 @@
 
                                     @if (task.DueDate is not null)
                                     {
-                                        <MudText Typo="Typo.caption" Color="DueColor(task.DueDate)" Class="d-block mt-1">
+                                        <MudText Typo="Typo.caption" Class="d-block mt-1">
                                             <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" /> @task.DueDate.Value.ToString("MM/dd HH:mm")
+                                        </MudText>
+                                    }
+
+                                    @if (task.DoneAt is not null)
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Success" Class="d-block mt-1">
+                                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" /> @task.DoneAt.Value.ToString("MM/dd HH:mm")
                                         </MudText>
                                     }
 
@@ -985,20 +992,5 @@
             0 => "不到1天",
             _ => $"{days}天",
         };
-    }
-
-    private static Color DueColor(DateTime? due)
-    {
-        if (due is null)
-        {
-            return Color.Default;
-        }
-
-        var now = DateTime.Now;
-        if (due.Value < now)
-        {
-            return Color.Error;
-        }
-        return due.Value.Date == now.Date ? Color.Warning : Color.Default;
     }
 }
