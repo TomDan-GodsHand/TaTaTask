@@ -47,7 +47,16 @@
 - 暂停推进的任务移入「冰箱」泳道
 - 弹窗输入冻结原因，记录冻结时长
 - 解冻自动恢复到进入前的原状态
-- 冻结泳道主题色（淡蓝冰箱）
+- 雪花水印背景（浅蓝冰感主题）
+
+### 撤回与确认
+- 进行中可撤回至未开始（子步骤全部重置）
+- 已完成可撤回至进行中
+- 开始、完成、删除、归档、冻结全部使用 MudBlazor 风格确认弹窗
+
+### 实时同步
+- SignalR WebSocket 推送，多标签/多设备数据自动同步
+- 一个标签操作，其他标签即时刷新
 
 ### 临期提醒
 - 看板顶部通栏，距截止时间 < 阈值自动提醒
@@ -74,6 +83,7 @@
 | 运行时   | .NET 10                                    |
 | 前端框架 | Blazor (InteractiveAuto + SSR)             |
 | UI 组件  | [MudBlazor](https://mudblazor.com/)         |
+| 实时通信 | SignalR (WebSocket)                        |
 | 数据库   | SQLite (EF Core Code-First)                |
 | 认证     | ASP.NET Core Cookie Auth + BCrypt 密码哈希 |
 | 部署     | 单进程自托管，linux-x64，systemd 管理      |
@@ -183,6 +193,53 @@ chmod +x uninstall.sh
 ./uninstall.sh
 ```
 
+### 反向代理
+
+生产环境建议 nginx/Caddy 反代，应用只监听 HTTP。
+
+**1. 在 `appsettings.Production.json` 中开启反代模式：**
+
+```json
+{
+  "ReverseProxy": true,
+  "Kestrel": {
+    "Endpoints": {
+      "Https": null
+    }
+  }
+}
+```
+
+- `ReverseProxy: true` → 信任 `X-Forwarded-*` 头，禁用 HTTPS 重定向
+- `Https: null` → Kestrel 不再监听 HTTPS（证书由反代层处理）
+
+**2. nginx 反代配置示例：**
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # SignalR WebSocket 升级
+    location /hubs/ {
+        proxy_pass http://localhost:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
 ---
 
 ## 项目结构
@@ -205,6 +262,8 @@ TaTaTask/
 │   │   ├── StatsController.cs        # 统计数据 API
 │   │   ├── ArchiveController.cs      # 归档 API
 │   │   └── UserController.cs         # 用户 API
+│   ├── Hubs/
+│   │   └── TodoHub.cs                # SignalR 实时推送 Hub
 │   ├── Data/AppDbContext.cs          # EF Core DbContext
 │   ├── Migrations/                   # 数据库迁移文件
 │   └── wwwroot/app.css               # 全局样式
@@ -255,10 +314,13 @@ git push origin v1.2.0
 - [x] 临期提醒 + 过期自动清理
 - [x] 归档系统（手动 + 自动 + 历史浏览）
 - [x] 数据统计大盘（指标卡 + 冻结清单 + 完成趋势）
+- [x] 统一确认弹窗（MudBlazor 风格，替代 JS confirm）
+- [x] SignalR 实时推送（多标签/多设备同步）
+- [x] 撤回机制（进行中↩未开始、已完成↩进行中）
+- [x] 反代支持（纯 HTTP + ForwardedHeaders）
 - [x] `linux-x64` 一键部署脚本（自更新 + 数据库迁移）
-- [ ] 移动端 PWA 适配
+- [ ] 移动端响应式适配
 - [ ] 深色模式
-- [ ] 多用户协作
 - [ ] Docker 镜像
 
 ---

@@ -1,12 +1,15 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
+using System.Net;
 using TaTaTask.Client.Services;
 using TaTaTask.Components;
 using TaTaTask.Components.Account;
 using TaTaTask.Data;
+using TaTaTask.Hubs;
 using TaTaTask.Services;
 
 namespace TaTaTask
@@ -54,6 +57,7 @@ namespace TaTaTask
                     options.Cookie.Name = "TaTaTask.Auth";
                 });
             builder.Services.AddAuthorization();
+            builder.Services.AddSignalR();
 
             var app = builder.Build();
 
@@ -85,7 +89,21 @@ namespace TaTaTask
             }
 
             app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-            app.UseHttpsRedirection();
+
+            if (app.Configuration.GetValue<bool>("ReverseProxy"))
+            {
+                app.UseForwardedHeaders(new ForwardedHeadersOptions
+                {
+                    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+#pragma warning disable ASPDEPR005
+                    KnownNetworks = { new Microsoft.AspNetCore.HttpOverrides.IPNetwork(IPAddress.Loopback, 8) }
+#pragma warning restore ASPDEPR005
+                });
+            }
+            else
+            {
+                app.UseHttpsRedirection();
+            }
 
             app.UseAuthentication();
             app.UseAuthorization();
@@ -93,6 +111,7 @@ namespace TaTaTask
             app.UseAntiforgery();
 
             app.MapControllers();
+            app.MapHub<TodoHub>("/hubs/todo");
 
             app.MapStaticAssets();
             app.MapRazorComponents<App>()
