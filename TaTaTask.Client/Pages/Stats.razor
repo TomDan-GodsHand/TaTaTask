@@ -1,6 +1,8 @@
 @page "/stats"
 @rendermode InteractiveAuto
+@implements IAsyncDisposable
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.SignalR.Client
 @using TaTaTask.Client.Services
 @using TaTaTask.Models.Dtos
 @attribute [Authorize]
@@ -116,6 +118,7 @@
 @code {
     private DashboardStatsDto _stats = new();
     private bool _loading;
+    private HubConnection? _hub;
 
     protected override async Task OnInitializedAsync()
     {
@@ -128,6 +131,28 @@
         {
             _loading = false;
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _hub = new HubConnectionBuilder()
+                .WithUrl(Nav.ToAbsoluteUri("/hubs/todo"))
+                .Build();
+            _hub.On("Refresh", async () =>
+            {
+                _stats = await TodoService.GetStatsAsync();
+                await InvokeAsync(StateHasChanged);
+            });
+            await _hub.StartAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hub is not null)
+            await _hub.DisposeAsync();
     }
 
     private string StepRate()

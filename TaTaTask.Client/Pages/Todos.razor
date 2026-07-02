@@ -1,8 +1,10 @@
 @page "/tatatask"
 @rendermode InteractiveAuto
+@implements IAsyncDisposable
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.SignalR.Client
 @using TaTaTask.Client.Services
 @using TaTaTask.Models.Dtos
 @using TaTaTask.Models.Enums
@@ -487,6 +489,8 @@
     private readonly HashSet<int> _expanded = new();
     private readonly Dictionary<int, string> _newStepInput = new();
 
+    private HubConnection? _hub;
+
     private int? _freezeTargetId;
     private string _freezeReason = string.Empty;
 
@@ -505,6 +509,34 @@
         _search = Q ?? string.Empty;
         await LoadAsync();
         await LoadSettingsAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _hub = new HubConnectionBuilder()
+                .WithUrl(Nav.ToAbsoluteUri("/hubs/todo"))
+                .Build();
+            _hub.On("Refresh", async () =>
+            {
+                await LoadAsync();
+                await InvokeAsync(StateHasChanged);
+            });
+            await _hub.StartAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hub is not null)
+            await _hub.DisposeAsync();
+    }
+
+    private async Task NotifyOthersAsync()
+    {
+        if (_hub?.State == HubConnectionState.Connected)
+            await _hub.SendAsync("NotifyChange");
     }
 
     private async Task LoadSettingsAsync()
@@ -653,6 +685,7 @@
         });
         _showCreate = false;
         await LoadAsync();
+        await NotifyOthersAsync();
     }
 
     private void AddCreateStep()
@@ -713,6 +746,7 @@
         await TodoService.UpdateAsync(t.Id, request);
         _editId = null;
         await LoadAsync();
+        await NotifyOthersAsync();
     }
 
     private void AddEditStep()
@@ -749,6 +783,7 @@
                 await TodoService.ChangeStatusAsync(task.Id, TodoStatus.NotStarted, resetSteps: true);
                 _error = null;
                 await LoadAsync();
+                await NotifyOthersAsync();
             });
     }
 
@@ -762,6 +797,7 @@
                 await TodoService.ChangeStatusAsync(task.Id, TodoStatus.InProgress);
                 _error = null;
                 await LoadAsync();
+                await NotifyOthersAsync();
             });
     }
 
@@ -772,6 +808,7 @@
             await TodoService.ChangeStatusAsync(task.Id, status, frozenReason);
             _error = null;
             await LoadAsync();
+            await NotifyOthersAsync();
         }
         catch (Exception ex)
         {
@@ -810,6 +847,7 @@
             {
                 await TodoService.DeleteAsync(task.Id);
                 await LoadAsync();
+                await NotifyOthersAsync();
             });
     }
 
@@ -825,6 +863,7 @@
                     await TodoService.ArchiveAsync(task.Id);
                     _error = null;
                     await LoadAsync();
+                    await NotifyOthersAsync();
                 }
                 catch (Exception ex)
                 {
@@ -874,6 +913,7 @@
         ReplaceTask(await TodoService.AddStepAsync(task.Id, title));
         _newStepInput[task.Id] = string.Empty;
         _expanded.Add(task.Id);
+        await NotifyOthersAsync();
     }
 
     private async Task ToggleStep(TodoItemDto task, TodoStepDto step)
@@ -881,6 +921,7 @@
         var updated = await TodoService.ToggleStepAsync(task.Id, step.Id);
         if (updated is null) return;
         ReplaceTask(updated);
+        await NotifyOthersAsync();
 
         if (updated.Steps.Count > 0 && updated.Steps.All(s => s.IsCompleted)
             && updated.Status != TodoStatus.Done && updated.Status != TodoStatus.Frozen)
@@ -895,6 +936,7 @@
     private async Task DeleteStep(TodoItemDto task, TodoStepDto step)
     {
         ReplaceTask(await TodoService.DeleteStepAsync(task.Id, step.Id));
+        await NotifyOthersAsync();
     }
 
     private static TodoStatus? NextStatus(TodoStatus status) => status switch
