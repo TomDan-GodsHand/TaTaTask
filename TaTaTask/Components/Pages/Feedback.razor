@@ -1,0 +1,187 @@
+@page "/feedback"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using TaTaTask.Data
+@using TaTaTask.Models.Dtos
+@using TaTaTask.Models.Entities
+@using TaTaTask.Services
+@inject AppDbContext Db
+@inject ICurrentUser Current
+@inject NavigationManager Nav
+
+<PageTitle>意见反馈</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">意见反馈</MudText>
+
+    <AuthorizeView>
+        <Authorized Context="authState">
+            <MudPaper Elevation="3" Class="pa-6 mb-6">
+                <MudText Typo="Typo.subtitle1" Class="mb-3"><b>提交反馈</b></MudText>
+                @if (!string.IsNullOrEmpty(_submitSuccess))
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3" ShowCloseIcon="true"
+                              CloseIconClicked="@(() => _submitSuccess = null)">@_submitSuccess</MudAlert>
+                }
+                @if (!string.IsNullOrEmpty(_submitError))
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3" ShowCloseIcon="true"
+                              CloseIconClicked="@(() => _submitError = null)">@_submitError</MudAlert>
+                }
+                <EditForm Model="_feedbackModel" OnValidSubmit="SubmitFeedback" FormName="feedback-form">
+                    <DataAnnotationsValidator />
+                    <MudTextField @bind-Value="_feedbackModel.Title" Label="标题" Variant="Variant.Outlined"
+                                  Class="mb-3" Required="true" />
+                    <MudTextField @bind-Value="_feedbackModel.Content" Label="内容" Variant="Variant.Outlined"
+                                  Lines="4" Class="mb-3" Required="true" />
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">提交</MudButton>
+                </EditForm>
+            </MudPaper>
+        </Authorized>
+        <NotAuthorized>
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-6">
+                请<MudLink Href="@($"/login?returnUrl={Uri.EscapeDataString("/feedback")}")">登录</MudLink>后提交反馈
+            </MudAlert>
+        </NotAuthorized>
+    </AuthorizeView>
+
+    @if (_items is null)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" Class="my-8" />
+    }
+    else if (_items.Count == 0)
+    {
+        <MudText Typo="Typo.body1" Align="Align.Center" Class="mt-8" Style="opacity:0.5;">暂无反馈，欢迎提交</MudText>
+    }
+    else
+    {
+        <MudExpansionPanels>
+            @foreach (var item in _items)
+            {
+                <MudExpansionPanel>
+                    <TitleContent>
+                        <div>
+                            <MudText Typo="Typo.body1"><b>@item.Title</b></MudText>
+                            <MudText Typo="Typo.caption" Style="opacity:0.6;">@item.Username · @item.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudText>
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
+                        <MudText Typo="Typo.body1" Class="mb-3" Style="white-space:pre-wrap;">@item.Content</MudText>
+
+                        @if (item.Replies is { Count: > 0 })
+                        {
+                            <MudDivider Class="mb-2" />
+                            <MudText Typo="Typo.subtitle2" Class="mb-2"><b>管理员回复</b></MudText>
+                            @foreach (var reply in item.Replies)
+                            {
+                                <MudPaper Elevation="0" Class="pa-3 mb-2" Style="background-color:#f0f7f4;">
+                                    <MudText Typo="Typo.body2" Style="white-space:pre-wrap;">@reply.Content</MudText>
+                                    <MudText Typo="Typo.caption" Style="opacity:0.5;">管理员 · @reply.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudText>
+                                </MudPaper>
+                            }
+                        }
+
+                        @if (Current.IsAdmin)
+                        {
+                            <MudDivider Class="my-3" />
+                            @if (!string.IsNullOrEmpty(_replySuccess) && _replyTargetId == item.Id)
+                            {
+                                <MudAlert Severity="Severity.Success" Dense="true" Class="mb-2" ShowCloseIcon="true"
+                                          CloseIconClicked="@(() => _replySuccess = null)">@_replySuccess</MudAlert>
+                            }
+                            <EditForm Model="_replyModel" OnValidSubmit="@(() => SubmitReply(item.Id))" FormName="@($"reply-form-{item.Id}")">
+                                <DataAnnotationsValidator />
+                                <MudTextField @bind-Value="_replyModel.Content" Label="回复" Variant="Variant.Outlined"
+                                              Lines="3" Class="mb-3" Required="true" />
+                                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                                           Size="Size.Small">回复</MudButton>
+                            </EditForm>
+                        }
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
+        </MudExpansionPanels>
+    }
+</MudContainer>
+
+@code {
+    private List<FeedbackItemDto>? _items;
+    private FeedbackRequest _feedbackModel = new();
+    private FeedbackReplyRequest _replyModel = new();
+    private string? _submitSuccess;
+    private string? _submitError;
+    private string? _replySuccess;
+    private int _replyTargetId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadItems();
+    }
+
+    private async Task LoadItems()
+    {
+        _items = await Db.FeedbackItems
+            .OrderByDescending(f => f.CreatedAt)
+            .Select(f => new FeedbackItemDto
+            {
+                Id = f.Id,
+                Title = f.Title,
+                Content = f.Content,
+                Username = f.User != null ? f.User.Username : "未知用户",
+                CreatedAt = f.CreatedAt,
+                Replies = f.Replies.OrderBy(r => r.CreatedAt).Select(r => new FeedbackReplyDto
+                {
+                    Id = r.Id,
+                    Content = r.Content,
+                    Username = r.User != null ? r.User.Username : "未知用户",
+                    CreatedAt = r.CreatedAt,
+                }).ToList(),
+            })
+            .ToListAsync();
+    }
+
+    private async Task SubmitFeedback()
+    {
+        if (!Current.IsAuthenticated || Current.UserId is null) return;
+
+        var item = new FeedbackItem
+        {
+            UserId = Current.UserId.Value,
+            Title = _feedbackModel.Title.Trim(),
+            Content = _feedbackModel.Content.Trim(),
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        Db.FeedbackItems.Add(item);
+        await Db.SaveChangesAsync();
+
+        _submitSuccess = "感谢你的反馈！";
+        _submitError = null;
+        _feedbackModel = new();
+
+        await LoadItems();
+    }
+
+    private async Task SubmitReply(int feedbackId)
+    {
+        if (!Current.IsAdmin) return;
+
+        var reply = new FeedbackReply
+        {
+            FeedbackItemId = feedbackId,
+            UserId = Current.UserId!.Value,
+            Content = _replyModel.Content.Trim(),
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        Db.FeedbackReplies.Add(reply);
+        await Db.SaveChangesAsync();
+
+        _replySuccess = "回复已发布";
+        _replyTargetId = feedbackId;
+        _replyModel = new();
+
+        await LoadItems();
+    }
+}

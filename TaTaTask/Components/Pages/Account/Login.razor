@@ -12,7 +12,7 @@
 
 <PageTitle>登录</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.ExtraSmall" Class="mt-16">
+<MudContainer MaxWidth="MaxWidth.ExtraSmall" Class="mt-16 login-container">
     <MudPaper Elevation="3" Class="pa-8">
         <MudText Typo="Typo.h5" Align="Align.Center" Class="mb-6">登录 TaTaTask</MudText>
 
@@ -65,6 +65,7 @@
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.Username),
+            new("IsAdmin", user.IsAdmin.ToString()),
         };
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));

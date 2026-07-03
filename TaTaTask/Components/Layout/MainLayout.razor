@@ -13,40 +13,74 @@
         </a>
         <MudSpacer />
         <AuthorizeView>
-            <Authorized>
+            <Authorized Context="authState">
                 <MudButton Href="tatatask" Variant="Variant.Text"
                            Color="@(IsActive("tatatask") ? Color.Primary : Color.Inherit)"
                            Style="@(IsActive("tatatask") ? "font-weight:bold;" : null)"
-                           StartIcon="@Icons.Material.Filled.Dashboard" Class="mr-1">看板</MudButton>
+                           StartIcon="@Icons.Material.Filled.Dashboard" Class="nav-btn mr-1"><span class="nav-btn-label">看板</span></MudButton>
                 <MudButton Href="archive" Variant="Variant.Text"
                            Color="@(IsActive("archive") ? Color.Primary : Color.Inherit)"
                            Style="@(IsActive("archive") ? "font-weight:bold;" : null)"
-                           StartIcon="@Icons.Material.Filled.Archive" Class="mr-1">归档</MudButton>
+                           StartIcon="@Icons.Material.Filled.Archive" Class="nav-btn mr-1"><span class="nav-btn-label">归档</span></MudButton>
                 <MudButton Href="stats" Variant="Variant.Text"
                            Color="@(IsActive("stats") ? Color.Primary : Color.Inherit)"
                            Style="@(IsActive("stats") ? "font-weight:bold;" : null)"
-                           StartIcon="@Icons.Material.Filled.BarChart" Class="mr-1">统计</MudButton>
-                <MudButton Href="settings" Variant="Variant.Text"
-                           Color="@(IsActive("settings") ? Color.Primary : Color.Inherit)"
-                           Style="@(IsActive("settings") ? "font-weight:bold;" : null)"
-                           StartIcon="@Icons.Material.Filled.Settings" Class="mr-2">设置</MudButton>
-                <MudText Class="mr-3">@context.User.Identity?.Name</MudText>
-                <form action="Account/Logout" method="post">
-                    <AntiforgeryToken />
-                    <MudButton ButtonType="ButtonType.Submit" Color="Color.Inherit" Variant="Variant.Text">登出</MudButton>
-                </form>
+                           StartIcon="@Icons.Material.Filled.BarChart" Class="nav-btn mr-1"><span class="nav-btn-label">统计</span></MudButton>
+                <MudButton Href="feedback" Variant="Variant.Text"
+                           Color="@(IsActive("feedback") ? Color.Primary : Color.Inherit)"
+                           Style="@(IsActive("feedback") ? "font-weight:bold;" : null)"
+                           StartIcon="@Icons.Material.Filled.Feedback" Class="nav-btn mr-3"><span class="nav-btn-label">反馈</span></MudButton>
+                <MudMenu EndIcon="@Icons.Material.Filled.ArrowDropDown" AnchorOrigin="Origin.BottomRight"
+                         TransformOrigin="Origin.TopRight">
+                    <ActivatorContent>
+                        <MudText Style="cursor:pointer;padding:6px 4px;">@authState.User.Identity?.Name</MudText>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem Href="settings">设置</MudMenuItem>
+                        <MudDivider Class="my-1" />
+                        <MudMenuItem OnClick="Logout">登出</MudMenuItem>
+                    </ChildContent>
+                </MudMenu>
             </Authorized>
             <NotAuthorized>
+                <MudButton Href="feedback" Variant="Variant.Text"
+                           Color="@(IsActive("feedback") ? Color.Primary : Color.Inherit)"
+                           Style="@(IsActive("feedback") ? "font-weight:bold;" : null)"
+                           StartIcon="@Icons.Material.Filled.Feedback" Class="nav-btn mr-2"><span class="nav-btn-label">反馈</span></MudButton>
                 <MudLink Href="login" Color="Color.Inherit">登录</MudLink>
             </NotAuthorized>
         </AuthorizeView>
     </MudAppBar>
     <MudMainContent>
-        <MudContainer MaxWidth="MaxWidth.False" Class="pa-4">
+        <MudContainer MaxWidth="MaxWidth.False" Class="content-container">
             @Body
         </MudContainer>
     </MudMainContent>
 </MudLayout>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="mobile-nav">
+            <MudPaper Elevation="4" Class="mobile-nav-paper">
+                <MudIconButton Href="tatatask" Icon="@Icons.Material.Filled.Dashboard"
+                               Color="@(IsActive("tatatask") ? Color.Primary : Color.Inherit)"
+                               title="看板" Class="mobile-nav-item" />
+                <MudIconButton Href="archive" Icon="@Icons.Material.Filled.Archive"
+                               Color="@(IsActive("archive") ? Color.Primary : Color.Inherit)"
+                               title="归档" Class="mobile-nav-item" />
+                <MudIconButton Href="stats" Icon="@Icons.Material.Filled.BarChart"
+                               Color="@(IsActive("stats") ? Color.Primary : Color.Inherit)"
+                               title="统计" Class="mobile-nav-item" />
+                <MudIconButton Href="feedback" Icon="@Icons.Material.Filled.Feedback"
+                               Color="@(IsActive("feedback") ? Color.Primary : Color.Inherit)"
+                               title="反馈" Class="mobile-nav-item" />
+                <MudIconButton Href="settings" Icon="@Icons.Material.Filled.Settings"
+                               Color="@(IsActive("settings") ? Color.Primary : Color.Inherit)"
+                               title="设置" Class="mobile-nav-item" />
+            </MudPaper>
+        </div>
+    </Authorized>
+</AuthorizeView>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
@@ -68,4 +102,9 @@
 
     private bool IsActive(string page)
         => new Uri(Nav.Uri).AbsolutePath.TrimEnd('/').Equals("/" + page, StringComparison.OrdinalIgnoreCase);
+
+    private void Logout()
+    {
+        Nav.NavigateTo("/Account/Logout", forceLoad: true);
+    }
 }

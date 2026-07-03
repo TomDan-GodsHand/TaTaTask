@@ -91,6 +91,10 @@ h1:focus {
 .kanban-lane-frozen {
     position: relative;
 }
+.kanban-lane-header {
+    position: relative;
+    z-index: 1;
+}
 .kanban-lane-frozen .kanban-lane-cards {
     position: relative;
     z-index: 1;
@@ -145,27 +149,118 @@ h1:focus {
 }
 
 @media (max-width: 768px) {
+    /* ---- navbar ---- */
+    .nav-btn-label {
+        display: none;
+    }
+
+    .nav-btn {
+        min-width: 36px !important;
+        padding: 4px 2px !important;
+    }
+
+    /* ---- bottom tab bar ---- */
+    .mobile-nav {
+        display: flex;
+    }
+
+    .mud-main-content {
+        padding-bottom: 56px !important;
+    }
+
+    .content-container {
+        padding: 8px !important;
+    }
+
+    /* ---- bottom search bar ---- */
     .app-bottom-bar {
-        bottom: 16px;
+        bottom: 68px;
         gap: 8px;
     }
 
     .app-search {
         width: min(320px, 65vw);
     }
-}
 
-@media (max-width: 768px) {
+    /* ---- kanban board ---- */
+    .board-page {
+        height: calc(100dvh - 64px);
+    }
+
     .kanban-board {
         overflow-x: auto;
         scroll-snap-type: x mandatory;
         gap: 12px;
+        scroll-behavior: smooth;
     }
 
     .kanban-lane {
-        flex: 0 0 86vw;
+        flex: 0 0 90vw;
         scroll-snap-align: center;
     }
+
+    .kanban-lane-cards {
+        padding-bottom: 68px;
+    }
+
+    /* ---- lane indicators ---- */
+    .lane-indicators {
+        display: flex;
+    }
+
+    /* ---- login / register ---- */
+    .login-container {
+        margin-top: 24px !important;
+    }
+}
+
+/* ===== DESKTOP: hide mobile elements ===== */
+.mobile-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1100;
+    justify-content: center;
+}
+
+.mobile-nav-paper {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    width: 100%;
+    height: 56px;
+    border-radius: 0 !important;
+    background-color: #FFFFFF !important;
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+.mobile-nav-item {
+    flex: 1;
+    max-width: 72px;
+}
+
+/* ===== lane indicators (dot nav) ===== */
+.lane-indicators {
+    display: none;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 0 4px;
+}
+
+.lane-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.2);
+    border: none;
+    cursor: pointer;
+    transition: background .2s;
+}
+
+.lane-dot.active {
+    background: var(--mud-palette-primary);
 }
 
 /* Stats page */
