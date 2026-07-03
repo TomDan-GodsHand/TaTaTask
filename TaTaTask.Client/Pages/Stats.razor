@@ -16,6 +16,11 @@
     <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
 }
 
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _error = null)">@_error</MudAlert>
+}
+
 <div class="stats-page">
     <MudText Typo="Typo.h5" Class="mb-4"><b>数据统计</b></MudText>
 
@@ -118,6 +123,7 @@
 @code {
     private DashboardStatsDto _stats = new();
     private bool _loading;
+    private string? _error;
     private HubConnection? _hub;
 
     protected override async Task OnInitializedAsync()
@@ -126,6 +132,10 @@
         try
         {
             _stats = await TodoService.GetStatsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"统计数据加载失败: {ex.Message}";
         }
         finally
         {
@@ -137,15 +147,22 @@
     {
         if (firstRender)
         {
-            _hub = new HubConnectionBuilder()
-                .WithUrl(Nav.ToAbsoluteUri("/hubs/todo"))
-                .Build();
-            _hub.On("Refresh", async () =>
+            try
             {
-                _stats = await TodoService.GetStatsAsync();
-                await InvokeAsync(StateHasChanged);
-            });
-            await _hub.StartAsync();
+                _hub = new HubConnectionBuilder()
+                    .WithUrl(Nav.ToAbsoluteUri("/hubs/todo"))
+                    .Build();
+                _hub.On("Refresh", async () =>
+                {
+                    _stats = await TodoService.GetStatsAsync();
+                    await InvokeAsync(StateHasChanged);
+                });
+                await _hub.StartAsync();
+            }
+            catch (Exception ex)
+            {
+                _error = $"实时连接失败: {ex.Message}";
+            }
         }
     }
 

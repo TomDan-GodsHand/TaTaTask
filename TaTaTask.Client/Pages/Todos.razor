@@ -513,24 +513,38 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _search = Q ?? string.Empty;
-        await LoadAsync();
-        await LoadSettingsAsync();
+        try
+        {
+            _search = Q ?? string.Empty;
+            await LoadAsync();
+            await LoadSettingsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"页面加载失败，请刷新重试: {ex.Message}";
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            _hub = new HubConnectionBuilder()
-                .WithUrl(Nav.ToAbsoluteUri("/hubs/todo"))
-                .Build();
-            _hub.On("Refresh", async () =>
+            try
             {
-                await LoadAsync();
-                await InvokeAsync(StateHasChanged);
-            });
-            await _hub.StartAsync();
+                _hub = new HubConnectionBuilder()
+                    .WithUrl(Nav.ToAbsoluteUri("/hubs/todo"))
+                    .Build();
+                _hub.On("Refresh", async () =>
+                {
+                    await LoadAsync();
+                    await InvokeAsync(StateHasChanged);
+                });
+                await _hub.StartAsync();
+            }
+            catch (Exception ex)
+            {
+                _error = $"实时连接失败: {ex.Message}";
+            }
         }
     }
 
