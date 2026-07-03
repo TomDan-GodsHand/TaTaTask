@@ -3,7 +3,7 @@
 REPO="TomDan-GodsHand/TaTaTask"
 INSTALL_DIR="/opt/tatatask"
 SERVICE="tatatask.service"
-SCRIPT_VERSION=2
+SCRIPT_VERSION=3
 
 # ── 自更新（必须在 set -e 之前执行，避免 pipefail 在赋值中触发退出）──
 SELF_URL="https://raw.githubusercontent.com/${REPO}/main/deploy/update.sh"
@@ -29,6 +29,17 @@ if [ -z "$LATEST" ]; then
 fi
 
 echo "==> 最新版本: $LATEST"
+
+VERSION_FILE="${INSTALL_DIR}/VERSION"
+if [ -f "$VERSION_FILE" ]; then
+    CURRENT=$(cat "$VERSION_FILE")
+    if [ "$CURRENT" = "$LATEST" ]; then
+        echo "==> 已是最新版本: $LATEST，无需更新"
+        exit 0
+    fi
+    echo "==> 当前版本: $CURRENT -> 最新: $LATEST"
+fi
+
 echo "==> 下载发布包..."
 curl -sL "https://github.com/${REPO}/releases/latest/download/tatatask-${LATEST#v}-linux-x64.tar.gz" -o "/tmp/tatatask.tar.gz"
 
@@ -84,4 +95,5 @@ echo "==> 检查状态..."
 sudo systemctl status tatatask --no-pager -l
 
 echo "==> 更新完成: $LATEST"
+echo "$LATEST" | sudo tee "${INSTALL_DIR}/VERSION" > /dev/null
 rm -f "/tmp/tatatask.tar.gz"
