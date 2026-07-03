@@ -30,17 +30,16 @@
                            Color="@(IsActive("feedback") ? Color.Primary : Color.Inherit)"
                            Style="@(IsActive("feedback") ? "font-weight:bold;" : null)"
                            StartIcon="@Icons.Material.Filled.Feedback" Class="nav-btn mr-3"><span class="nav-btn-label">反馈</span></MudButton>
-                <MudMenu EndIcon="@Icons.Material.Filled.ArrowDropDown" AnchorOrigin="Origin.BottomRight"
-                         TransformOrigin="Origin.TopRight">
-                    <ActivatorContent>
-                        <MudText Style="cursor:pointer;padding:6px 4px;">@authState.User.Identity?.Name</MudText>
-                    </ActivatorContent>
-                    <ChildContent>
-                        <MudMenuItem Href="settings">设置</MudMenuItem>
+                <details class="user-menu">
+                    <summary class="user-menu-summary">
+                        @authState.User.Identity?.Name <span class="user-menu-arrow">▾</span>
+                    </summary>
+                    <MudPaper Elevation="8" Class="user-dropdown">
+                        <MudMenuItem Href="/settings">设置</MudMenuItem>
                         <MudDivider Class="my-1" />
-                        <MudMenuItem OnClick="Logout">登出</MudMenuItem>
-                    </ChildContent>
-                </MudMenu>
+                        <MudMenuItem Href="/Account/Logout">登出</MudMenuItem>
+                    </MudPaper>
+                </details>
             </Authorized>
             <NotAuthorized>
                 <MudButton Href="feedback" Variant="Variant.Text"
