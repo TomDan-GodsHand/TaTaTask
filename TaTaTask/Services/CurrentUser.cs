@@ -16,4 +16,7 @@ public class CurrentUser : ICurrentUser
 
     public int? UserId =>
         int.TryParse(Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : null;
+
+    public bool IsAdmin =>
+        bool.TryParse(Principal?.FindFirst("IsAdmin")?.Value, out var isAdmin) && isAdmin;
 }

@@ -12,6 +12,8 @@ public class AppDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<TodoItem> TodoItems => Set<TodoItem>();
     public DbSet<TodoStep> TodoSteps => Set<TodoStep>();
+    public DbSet<FeedbackItem> FeedbackItems => Set<FeedbackItem>();
+    public DbSet<FeedbackReply> FeedbackReplies => Set<FeedbackReply>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -47,6 +49,34 @@ public class AppDbContext : DbContext
         {
             entity.Property(s => s.Title).HasMaxLength(200).IsRequired();
             entity.HasIndex(s => s.TodoItemId);
+        });
+
+        modelBuilder.Entity<FeedbackItem>(entity =>
+        {
+            entity.Property(f => f.Title).HasMaxLength(200).IsRequired();
+            entity.Property(f => f.Content).HasMaxLength(5000).IsRequired();
+            entity.HasIndex(f => f.CreatedAt);
+
+            entity.HasOne(f => f.User)
+                .WithMany()
+                .HasForeignKey(f => f.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(f => f.Replies)
+                .WithOne(r => r.FeedbackItem)
+                .HasForeignKey(r => r.FeedbackItemId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FeedbackReply>(entity =>
+        {
+            entity.Property(r => r.Content).HasMaxLength(5000).IsRequired();
+            entity.HasIndex(r => r.FeedbackItemId);
+
+            entity.HasOne(r => r.User)
+                .WithMany()
+                .HasForeignKey(r => r.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

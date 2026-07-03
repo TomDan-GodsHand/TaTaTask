@@ -125,7 +125,7 @@ namespace TaTaTask
                 .AddInteractiveWebAssemblyRenderMode()
                 .AddAdditionalAssemblies(typeof(Client._Imports).Assembly);
 
-            app.MapPost("/Account/Logout", async (HttpContext http) =>
+            app.MapMethods("/Account/Logout", [HttpMethods.Get, HttpMethods.Post], async (HttpContext http) =>
             {
                 await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
                 return Results.LocalRedirect("/login");

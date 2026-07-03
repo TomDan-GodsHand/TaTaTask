@@ -11,6 +11,7 @@
 @attribute [Authorize]
 @inject ITodoService TodoService
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>TaTaTask</PageTitle>
 
@@ -61,7 +62,7 @@
     @foreach (var status in Lanes)
     {
         <div class="kanban-lane @(status == TodoStatus.Frozen ? "kanban-lane-frozen" : "")">
-            <div class="d-flex align-center px-1 py-1">
+            <div class="kanban-lane-header d-flex align-center px-1 py-1">
                 <MudText Typo="Typo.subtitle1"><b>@StatusName(status)</b></MudText>
                 <MudChip T="string" Size="Size.Small" Class="ml-2">@Lane(status).Count()</MudChip>
             </div>
@@ -320,6 +321,13 @@
             </div>
         </div>
     }
+</div>
+
+<div class="lane-indicators">
+    <button class="lane-dot active" data-index="0" @onclick="() => ScrollToLane(0)" title="未开始"></button>
+    <button class="lane-dot" data-index="1" @onclick="() => ScrollToLane(1)" title="进行中"></button>
+    <button class="lane-dot" data-index="2" @onclick="() => ScrollToLane(2)" title="已完成"></button>
+    <button class="lane-dot" data-index="3" @onclick="() => ScrollToLane(3)" title="已冻结"></button>
 </div>
 </div>
 
@@ -1006,5 +1014,10 @@
             0 => "不到1天",
             _ => $"{days}天",
         };
+    }
+
+    private async Task ScrollToLane(int index)
+    {
+        await JS.InvokeVoidAsync("scrollToLane", index);
     }
 }

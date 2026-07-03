@@ -40,9 +40,10 @@ internal sealed class PersistingServerAuthenticationStateProvider : ServerAuthen
         {
             var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var name = principal.FindFirst(ClaimTypes.Name)?.Value;
+            var isAdmin = bool.TryParse(principal.FindFirst("IsAdmin")?.Value, out var a) && a;
             if (userId is not null && name is not null)
             {
-                _state.PersistAsJson(nameof(UserInfo), new UserInfo { UserId = userId, Name = name });
+                _state.PersistAsJson(nameof(UserInfo), new UserInfo { UserId = userId, Name = name, IsAdmin = isAdmin });
             }
         }
     }

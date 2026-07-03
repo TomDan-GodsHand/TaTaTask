@@ -20,6 +20,42 @@
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script>
+        window.scrollToLane = function (index) {
+            var board = document.querySelector('.kanban-board');
+            if (!board) return;
+            var lane = board.querySelectorAll('.kanban-lane')[index];
+            if (lane) lane.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        };
+        (function () {
+            function updateLaneDots() {
+                var board = document.querySelector('.kanban-board');
+                var dots = document.querySelectorAll('.lane-dot');
+                if (!board || dots.length === 0) return;
+                var lane = board.querySelector('.kanban-lane');
+                if (!lane) return;
+                var laneWidth = lane.offsetWidth + 12;
+                var scrollLeft = board.scrollLeft;
+                var index = Math.round(scrollLeft / laneWidth);
+                if (index < 0) index = 0;
+                if (index >= dots.length) index = dots.length - 1;
+                dots.forEach(function (d) { d.classList.remove('active'); });
+                dots[index].classList.add('active');
+            }
+            var board = document.querySelector('.kanban-board');
+            if (board) {
+                board.addEventListener('scroll', updateLaneDots, { passive: true });
+            }
+            var observer = new MutationObserver(function () {
+                var b = document.querySelector('.kanban-board');
+                if (b && !b._laneScrollBound) {
+                    b._laneScrollBound = true;
+                    b.addEventListener('scroll', updateLaneDots, { passive: true });
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        })();
+    </script>
 </body>
 
 </html>
