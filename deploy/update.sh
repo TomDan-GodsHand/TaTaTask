@@ -3,7 +3,7 @@
 REPO="TomDan-GodsHand/TaTaTask"
 INSTALL_DIR="/opt/tatatask"
 SERVICE="tatatask.service"
-SCRIPT_VERSION=4
+SCRIPT_VERSION=5
 
 # ── 辅助函数 ──
 die() {
@@ -15,7 +15,7 @@ step() {
 }
 
 # ── 自更新 ──
-SELF_URL="https://raw.githubusercontent.com/${REPO}/main/deploy/update.sh"
+SELF_URL="https://raw.githubusercontent.com/${REPO}/master/deploy/update.sh"
 echo "==> 检查脚本自更新..."
 REMOTE_VER=$(curl -sL --retry 2 --retry-delay 3 --connect-timeout 15 "$SELF_URL" 2>/dev/null | grep '^SCRIPT_VERSION=' | cut -d= -f2 || true)
 
