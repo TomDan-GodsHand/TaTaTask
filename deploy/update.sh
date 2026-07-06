@@ -14,16 +14,20 @@ step() {
     echo "==> $1"
 }
 
-# ── 自更新（必须在 set -e 之前执行，避免 pipefail 在赋值中触发退出）──
+# ── 自更新 ──
 SELF_URL="https://raw.githubusercontent.com/${REPO}/main/deploy/update.sh"
-REMOTE_VER=$(curl -sL "$SELF_URL" 2>/dev/null | grep '^SCRIPT_VERSION=' | cut -d= -f2 || true)
+echo "==> 检查脚本自更新..."
+REMOTE_VER=$(curl -sL --retry 2 --retry-delay 3 --connect-timeout 15 "$SELF_URL" 2>/dev/null | grep '^SCRIPT_VERSION=' | cut -d= -f2 || true)
 
-if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" -gt "$SCRIPT_VERSION" ] 2>/dev/null; then
-    SCRIPT_PATH=$(readlink -f "$0")
-    echo "==> update.sh 有新版本 ($SCRIPT_VERSION -> $REMOTE_VER)，先更新自身..."
-    curl -sL "$SELF_URL" -o "$SCRIPT_PATH"
-    chmod +x "$SCRIPT_PATH"
-    exec "$SCRIPT_PATH" "$@"
+if [ -z "$REMOTE_VER" ]; then
+    echo "    警告: 无法连接到 GitHub 检查脚本更新，跳过"
+elif [ "$REMOTE_VER" -gt "$SCRIPT_VERSION" ] 2>/dev/null; then
+    SCRIPT_PATH=$(readlink -f "$0" 2>/dev/null || echo "$0")
+    echo "==> update.sh 有新版本 ($SCRIPT_VERSION -> $REMOTE_VER)，正在更新..."
+    if curl -L --retry 2 --retry-delay 3 --connect-timeout 30 "$SELF_URL" -o "$SCRIPT_PATH"; then
+        chmod +x "$SCRIPT_PATH" && exec "$SCRIPT_PATH" "$@"
+    fi
+    echo "    警告: 脚本自更新下载失败，继续使用当前版本"
 fi
 
 # ── 检查最新版本 ──
