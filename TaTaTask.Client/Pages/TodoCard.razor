@@ -1,0 +1,282 @@
+@using Microsoft.AspNetCore.Components.Web
+@using TaTaTask.Models.Dtos
+@using TaTaTask.Models.Enums
+
+<MudCard Class="my-2" Elevation="@(IsFrozen ? 1 : 2)">
+    <div @onclick="ToggleExpand" style="cursor:pointer;">
+        <MudCardContent Class="pa-3">
+            @* Row 1: Title area *@
+            <div class="d-flex align-center">
+                @if (Task.Steps.Count > 0)
+                {
+                    <MudIcon Icon="@(Expanded ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                             Size="Size.Small" Class="mr-1" />
+                }
+                @if (PriorityLabel is { Length: > 0 } pri)
+                {
+                    <MudText Color="Color.Error" Style="font-weight:700;" Class="mr-2">@pri</MudText>
+                }
+                <MudText Typo="Typo.body1" Style="font-weight:500; flex:1;">@Task.Title</MudText>
+                @if (Task.Steps.Count > 0)
+                {
+                    <MudText Typo="Typo.caption" Class="ml-2 mud-text-secondary">
+                        @Task.Steps.Count(s => s.IsCompleted)/@Task.Steps.Count
+                    </MudText>
+                }
+            </div>
+
+            @* Row 2: Due date + Tags (collapsed) *@
+            @if (!Expanded && HasTimeOrTagsOrDone)
+            {
+                <div class="d-flex align-center mt-1">
+                    <div class="d-flex align-center" style="flex:1;">
+                        @if (Task.DueDate is not null)
+                        {
+                            <MudText Typo="Typo.caption">
+                                <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" />
+                                @Task.DueDate.Value.ToString("MM/dd HH:mm")
+                            </MudText>
+                        }
+                        @if (Task.DoneAt is not null && Task.Status == TodoStatus.Done)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Success" Class="ml-2">
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" />
+                                @Task.DoneAt.Value.ToString("MM/dd HH:mm")
+                            </MudText>
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(Task.Tags))
+                    {
+                        var tagList = Task.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        <div class="d-flex align-center" style="gap:4px; margin-left:auto;">
+                            @foreach (var tag in tagList.Take(2))
+                            {
+                                <MudTooltip Text="@tag">
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined" Style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">@tag</MudChip>
+                                </MudTooltip>
+                            }
+                            @if (tagList.Length > 2)
+                            {
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">+@(tagList.Length - 2)</MudText>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* Row 2b: Frozen info (collapsed) *@
+            @if (!Expanded && IsFrozen && (!string.IsNullOrWhiteSpace(Task.FrozenReason) || Task.FrozeAt is not null))
+            {
+                <div class="d-flex align-center mt-1" style="gap:4px;">
+                    <MudText Typo="Typo.caption" Color="Color.Info">
+                        <MudIcon Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small" />
+                        冻结 @FrozenDuration(Task)
+                    </MudText>
+                    @if (!string.IsNullOrWhiteSpace(Task.FrozenReason))
+                    {
+                        <MudText Typo="Typo.caption" Style="opacity:.7;">· @Task.FrozenReason</MudText>
+                    }
+                </div>
+            }
+
+            @* Expanded content *@
+            @if (Expanded)
+            {
+                @* Description *@
+                @if (!string.IsNullOrWhiteSpace(Task.Description))
+                {
+                    <MudText Typo="Typo.body2" Class="mt-2 mud-text-secondary">@Task.Description</MudText>
+                }
+
+                @* Due + Done + Tags (expanded) *@
+                @if (HasTimeOrTagsOrDone)
+                {
+                    <div class="d-flex align-center mt-1">
+                        <div class="d-flex align-center" style="flex:1;">
+                            @if (Task.DueDate is not null)
+                            {
+                                <MudText Typo="Typo.caption">
+                                    <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" />
+                                    @Task.DueDate.Value.ToString("MM/dd HH:mm")
+                                </MudText>
+                            }
+                            @if (Task.DoneAt is not null && Task.Status == TodoStatus.Done)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Success" Class="ml-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" />
+                                    @Task.DoneAt.Value.ToString("MM/dd HH:mm")
+                                </MudText>
+                            }
+                        </div>
+                    @if (!string.IsNullOrWhiteSpace(Task.Tags))
+                    {
+                        var tagList = Task.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        <div class="d-flex align-center" style="gap:4px; margin-left:auto; flex-wrap:wrap;">
+                            @foreach (var tag in tagList)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@tag</MudChip>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* Frozen info (expanded) *@
+                @if (IsFrozen && (!string.IsNullOrWhiteSpace(Task.FrozenReason) || Task.FrozeAt is not null))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Info" Class="mt-1">
+                        <MudIcon Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small" />
+                        冻结 @FrozenDuration(Task)
+                        @if (!string.IsNullOrWhiteSpace(Task.FrozenReason))
+                        {
+                            <span style="opacity:.7;"> · @Task.FrozenReason</span>
+                        }
+                    </MudText>
+                }
+
+                @* Steps *@
+                <MudDivider Class="my-2" />
+                @foreach (var step in Task.Steps)
+                {
+                    <div class="d-flex align-center" @onclick:stopPropagation>
+                        <MudCheckBox T="bool" Value="step.IsCompleted" Dense="true" Size="Size.Small"
+                                     ValueChanged="@(_ => OnToggleStep.InvokeAsync((Task, step)))" />
+                        <MudText Typo="Typo.body2" Style="@(step.IsCompleted ? "text-decoration:line-through;opacity:.6" : "")">
+                            @step.Title
+                        </MudText>
+                        @if (step.DueDate is not null)
+                        {
+                            <MudText Typo="Typo.caption" Class="ml-1 mud-text-secondary">@step.DueDate.Value.ToString("MM/dd")</MudText>
+                        }
+                        <MudSpacer />
+                        <span @onclick:stopPropagation>
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                           OnClick="@(() => OnDeleteStep.InvokeAsync((Task, step)))" />
+                        </span>
+                    </div>
+                }
+                <div class="d-flex align-center mt-1" style="gap:4px;" @onclick:stopPropagation>
+                    <MudTextField @bind-Value="_newStepInput" Immediate="true" Placeholder="新增子步骤…"
+                                  Variant="Variant.Text" Margin="Margin.Dense"
+                                  OnKeyUp="HandleStepKey" Class="flex-grow-1" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => AddStep())" />
+                </div>
+            }
+        </MudCardContent>
+    </div>
+
+    @* Actions row *@
+    <MudCardActions Class="pa-1">
+        @if (Task.Status == TodoStatus.NotStarted)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small"
+                           Color="Color.Primary" OnClick="@(() => OnAdvance.InvokeAsync(Task))" />
+            <MudSpacer />
+            <MudMenu Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" @onclick:stopPropagation>
+                <MudMenuItem OnClick="@(() => OnEdit.InvokeAsync(Task))">编辑</MudMenuItem>
+                <MudMenuItem OnClick="@(() => OnDelete.InvokeAsync(Task))">删除</MudMenuItem>
+            </MudMenu>
+        }
+        else if (Task.Status is TodoStatus.InProgress or TodoStatus.Converging)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small"
+                           Color="Color.Primary" OnClick="@(() => OnAdvance.InvokeAsync(Task))" />
+            <MudSpacer />
+            <MudMenu Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" @onclick:stopPropagation>
+                <MudMenuItem OnClick="@(() => OnUndoToNotStarted.InvokeAsync(Task))">撤回未开始</MudMenuItem>
+                <MudMenuItem OnClick="@(() => OnFreeze.InvokeAsync(Task))">冻结</MudMenuItem>
+                <MudMenuItem OnClick="@(() => OnEdit.InvokeAsync(Task))">编辑</MudMenuItem>
+                <MudMenuItem OnClick="@(() => OnDelete.InvokeAsync(Task))">删除</MudMenuItem>
+            </MudMenu>
+        }
+        else if (Task.Status == TodoStatus.Done)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.Archive" Size="Size.Small"
+                           Color="Color.Secondary" OnClick="@(() => OnArchive.InvokeAsync(Task))" />
+            <MudSpacer />
+            <MudMenu Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" @onclick:stopPropagation>
+                <MudMenuItem OnClick="@(() => OnUndoDone.InvokeAsync(Task))">撤回进行中</MudMenuItem>
+                <MudMenuItem OnClick="@(() => OnEdit.InvokeAsync(Task))">编辑</MudMenuItem>
+                <MudMenuItem OnClick="@(() => OnDelete.InvokeAsync(Task))">删除</MudMenuItem>
+            </MudMenu>
+        }
+        else if (Task.Status == TodoStatus.Frozen)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small"
+                           OnClick="@(() => OnRestore.InvokeAsync(Task))" />
+            <MudSpacer />
+            <MudMenu Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" @onclick:stopPropagation>
+                <MudMenuItem OnClick="@(() => OnEdit.InvokeAsync(Task))">编辑</MudMenuItem>
+                <MudMenuItem OnClick="@(() => OnDelete.InvokeAsync(Task))">删除</MudMenuItem>
+            </MudMenu>
+        }
+    </MudCardActions>
+</MudCard>
+
+@code {
+    [Parameter] public TodoItemDto Task { get; set; } = default!;
+    [Parameter] public bool Expanded { get; set; }
+    [Parameter] public EventCallback<TodoItemDto> OnToggleExpand { get; set; }
+    [Parameter] public EventCallback<TodoItemDto> OnEdit { get; set; }
+    [Parameter] public EventCallback<TodoItemDto> OnDelete { get; set; }
+    [Parameter] public EventCallback<TodoItemDto> OnAdvance { get; set; }
+    [Parameter] public EventCallback<TodoItemDto> OnUndoToNotStarted { get; set; }
+    [Parameter] public EventCallback<TodoItemDto> OnUndoDone { get; set; }
+    [Parameter] public EventCallback<TodoItemDto> OnArchive { get; set; }
+    [Parameter] public EventCallback<TodoItemDto> OnFreeze { get; set; }
+    [Parameter] public EventCallback<TodoItemDto> OnRestore { get; set; }
+    [Parameter] public EventCallback<(TodoItemDto, TodoStepDto)> OnToggleStep { get; set; }
+    [Parameter] public EventCallback<(TodoItemDto, string)> OnAddStep { get; set; }
+    [Parameter] public EventCallback<(TodoItemDto, TodoStepDto)> OnDeleteStep { get; set; }
+
+    private string _newStepInput = string.Empty;
+
+    private bool IsFrozen => Task.Status == TodoStatus.Frozen;
+
+    private string PriorityLabel => Task.Priority switch
+    {
+        1 => "!",
+        2 => "!!",
+        3 => "!!!",
+        4 => "!!!!",
+        _ => string.Empty,
+    };
+
+    private bool HasTimeOrTagsOrDone =>
+        Task.DueDate is not null ||
+        !string.IsNullOrWhiteSpace(Task.Tags) ||
+        (Task.DoneAt is not null && Task.Status == TodoStatus.Done);
+
+    private void ToggleExpand()
+    {
+        OnToggleExpand.InvokeAsync(Task);
+    }
+
+    private async Task AddStep()
+    {
+        var title = _newStepInput?.Trim();
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return;
+        }
+        await OnAddStep.InvokeAsync((Task, title));
+        _newStepInput = string.Empty;
+    }
+
+    private async Task HandleStepKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddStep();
+    }
+
+    private static string FrozenDuration(TodoItemDto task)
+    {
+        if (task.FrozeAt is not { } frozeAt) return string.Empty;
+        var days = (int)((DateTime.UtcNow - frozeAt).TotalDays);
+        return days switch
+        {
+            0 => "不到1天",
+            _ => $"{days}天",
+        };
+    }
+}
