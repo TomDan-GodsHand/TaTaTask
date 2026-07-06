@@ -3,7 +3,16 @@
 REPO="TomDan-GodsHand/TaTaTask"
 INSTALL_DIR="/opt/tatatask"
 SERVICE="tatatask.service"
-SCRIPT_VERSION=3
+SCRIPT_VERSION=4
+
+# ── 辅助函数 ──
+die() {
+    echo "错误: $1" >&2
+    exit 1
+}
+step() {
+    echo "==> $1"
+}
 
 # ── 自更新（必须在 set -e 之前执行，避免 pipefail 在赋值中触发退出）──
 SELF_URL="https://raw.githubusercontent.com/${REPO}/main/deploy/update.sh"
@@ -17,83 +26,100 @@ if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" -gt "$SCRIPT_VERSION" ] 2>/dev/null; 
     exec "$SCRIPT_PATH" "$@"
 fi
 
-set -euo pipefail
-# ── 自更新结束，以下受 set -e 保护 ──
-
-echo "==> 检查最新版本..."
+# ── 检查最新版本 ──
+step "检查最新版本..."
 LATEST=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-
 if [ -z "$LATEST" ]; then
-    echo "错误: 无法获取最新版本号"
-    exit 1
+    die "无法获取最新版本号，请检查网络连接"
 fi
-
-echo "==> 最新版本: $LATEST"
+echo "    最新版本: $LATEST"
 
 VERSION_FILE="${INSTALL_DIR}/VERSION"
 if [ -f "$VERSION_FILE" ]; then
     CURRENT=$(cat "$VERSION_FILE")
     if [ "$CURRENT" = "$LATEST" ]; then
-        echo "==> 已是最新版本: $LATEST，无需更新"
+        echo "    已是最新版本: $LATEST，无需更新"
         exit 0
     fi
-    echo "==> 当前版本: $CURRENT -> 最新: $LATEST"
+    echo "    当前版本: $CURRENT -> 最新: $LATEST"
 fi
 
-echo "==> 下载发布包..."
-curl -sL "https://github.com/${REPO}/releases/latest/download/tatatask-${LATEST#v}-linux-x64.tar.gz" -o "/tmp/tatatask.tar.gz"
+# ── 下载发布包 ──
+step "下载发布包..."
+DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/tatatask-${LATEST#v}-linux-x64.tar.gz"
+curl -L --progress-bar --retry 3 --retry-delay 5 --retry-max-time 120 --connect-timeout 30 "$DOWNLOAD_URL" -o "/tmp/tatatask.tar.gz" || die "下载发布包失败 ($DOWNLOAD_URL)"
 
-echo "==> 备份当前版本..."
+# ── 备份当前版本 ──
+step "备份当前版本..."
 if [ -f "${INSTALL_DIR}/TaTaTask" ]; then
-    cp "${INSTALL_DIR}/TaTaTask" "/tmp/TaTaTask.bak" 2>/dev/null || true
+    cp "${INSTALL_DIR}/TaTaTask" "/tmp/TaTaTask.bak" 2>/dev/null || echo "    警告: 备份当前版本失败，继续..."
 fi
 
-echo "==> 备份配置文件..."
+# ── 备份配置文件 ──
+step "备份配置文件..."
 for f in appsettings.json appsettings.Production.json; do
-    [ -f "${INSTALL_DIR}/${f}" ] && sudo cp "${INSTALL_DIR}/${f}" "/tmp/${f}.bak"
+    if [ -f "${INSTALL_DIR}/${f}" ]; then
+        sudo cp "${INSTALL_DIR}/${f}" "/tmp/${f}.bak" || echo "    警告: 备份 ${f} 失败，继续..."
+    fi
 done
 
-echo "==> 停止服务..."
-sudo systemctl stop tatatask 2>/dev/null || true
+# ── 停止服务 ──
+step "停止服务..."
+sudo systemctl stop tatatask 2>/dev/null || echo "    提示: 服务未运行或停止失败，继续..."
 
-echo "==> 解压安装到 ${INSTALL_DIR}..."
-sudo mkdir -p "${INSTALL_DIR}"
-sudo tar xzf "/tmp/tatatask.tar.gz" -C "${INSTALL_DIR}"
+# ── 解压安装 ──
+step "解压安装到 ${INSTALL_DIR}..."
+sudo mkdir -p "${INSTALL_DIR}" || die "无法创建安装目录 ${INSTALL_DIR}"
+sudo tar xzf "/tmp/tatatask.tar.gz" -C "${INSTALL_DIR}" || die "解压失败，可能下载的文件已损坏"
 
-echo "==> 还原配置文件..."
+# ── 还原配置文件 ──
+step "还原配置文件..."
 for f in appsettings.json appsettings.Production.json; do
-    [ -f "/tmp/${f}.bak" ] && sudo cp "/tmp/${f}.bak" "${INSTALL_DIR}/${f}"
+    if [ -f "/tmp/${f}.bak" ]; then
+        sudo cp "/tmp/${f}.bak" "${INSTALL_DIR}/${f}" || echo "    警告: 还原 ${f} 失败，继续..."
+    fi
 done
 
-echo "==> 检查运行用户..."
-id tatatask &>/dev/null || sudo useradd -r -s /usr/sbin/nologin tatatask
+# ── 检查运行用户 ──
+step "检查运行用户..."
+id tatatask &>/dev/null || sudo useradd -r -s /usr/sbin/nologin tatatask || die "创建运行用户 tatatask 失败"
 
-echo "==> 初始化 SSL 目录(首次)..."
-sudo mkdir -p "${INSTALL_DIR}/ssl"
-sudo touch "${INSTALL_DIR}/ssl/pass.env"
-sudo chown -R tatatask:tatatask "${INSTALL_DIR}/ssl"
-sudo chmod 700 "${INSTALL_DIR}/ssl"
-sudo chmod 600 "${INSTALL_DIR}/ssl/pass.env"
+# ── 初始化 SSL 目录 ──
+step "初始化 SSL 目录（首次）..."
+sudo mkdir -p "${INSTALL_DIR}/ssl" || die "创建 SSL 目录 ${INSTALL_DIR}/ssl 失败"
+sudo touch "${INSTALL_DIR}/ssl/pass.env" || die "创建 SSL 密码文件失败"
+sudo chown -R tatatask:tatatask "${INSTALL_DIR}/ssl" || die "设置 SSL 目录所有者失败"
+sudo chmod 700 "${INSTALL_DIR}/ssl" || die "设置 SSL 目录权限失败"
+sudo chmod 600 "${INSTALL_DIR}/ssl/pass.env" || die "设置 SSL 密码文件权限失败"
 
-echo "==> 设置权限..."
-sudo chmod +x "${INSTALL_DIR}/TaTaTask"
-sudo chown -R tatatask:tatatask "${INSTALL_DIR}"
+# ── 设置权限 ──
+step "设置权限..."
+sudo chmod +x "${INSTALL_DIR}/TaTaTask" || die "设置可执行权限失败"
+sudo chown -R tatatask:tatatask "${INSTALL_DIR}" || die "设置目录所有者失败"
 
-echo "==> 更新数据库结构..."
-sudo -u tatatask bash -c "cd ${INSTALL_DIR} && ./TaTaTask --migrate-only"
+# ── 数据库迁移 ──
+step "更新数据库结构..."
+sudo -u tatatask bash -c "cd ${INSTALL_DIR} && ./TaTaTask --migrate-only" || die "数据库迁移失败，请检查日志"
 
-echo "==> 安装 systemd 服务(首次) 或重载..."
+# ── 安装 systemd 服务 ──
+step "安装 systemd 服务（首次）或重载..."
 if [ -f "${INSTALL_DIR}/${SERVICE}" ]; then
-    sudo cp "${INSTALL_DIR}/${SERVICE}" /usr/lib/systemd/system/
-    sudo systemctl daemon-reload
+    sudo cp "${INSTALL_DIR}/${SERVICE}" /usr/lib/systemd/system/ || die "复制 systemd 服务文件失败"
+    sudo systemctl daemon-reload || die "重载 systemd 失败"
 fi
 
-echo "==> 启动服务..."
-sudo systemctl start tatatask
+# ── 启动服务 ──
+step "启动服务..."
+sudo systemctl start tatatask || die "启动服务失败，请运行 'sudo journalctl -u tatatask -n 50' 查看日志"
 
-echo "==> 检查状态..."
-sudo systemctl status tatatask --no-pager -l
+# ── 检查状态 ──
+step "检查状态..."
+sudo systemctl status tatatask --no-pager -l || echo "    警告: 获取服务状态失败"
 
+# ── 写入版本号 ──
+step "更新版本记录..."
+echo "$LATEST" | sudo tee "${INSTALL_DIR}/VERSION" > /dev/null || die "写入版本号失败"
+
+# ── 清理 ──
+rm -f "/tmp/tatatask.tar.gz" "/tmp/TaTaTask.bak" "/tmp/appsettings.json.bak" "/tmp/appsettings.Production.json.bak"
 echo "==> 更新完成: $LATEST"
-echo "$LATEST" | sudo tee "${INSTALL_DIR}/VERSION" > /dev/null
-rm -f "/tmp/tatatask.tar.gz"
