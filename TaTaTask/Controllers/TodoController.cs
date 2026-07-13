@@ -83,6 +83,22 @@ public class TodoController : ControllerBase
         return updated is null ? NotFound() : updated;
     }
 
+    [HttpPut("{id:int}/steps/{stepId:int}")]
+    public async Task<ActionResult<TodoItemDto>> UpdateStep(int id, int stepId, UpdateStepRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Title))
+            return BadRequest("步骤标题不能为空");
+        var updated = await _service.UpdateStepAsync(id, stepId, request.Title);
+        return updated is null ? NotFound() : updated;
+    }
+
+    [HttpPut("{id:int}/steps/reorder")]
+    public async Task<IActionResult> ReorderSteps(int id, StepReorderRequest request)
+    {
+        await _service.ReorderStepsAsync(id, request.StepIds);
+        return NoContent();
+    }
+
     [HttpPost("{id:int}/archive")]
     public async Task<ActionResult<TodoItemDto>> Archive(int id)
     {

@@ -30,7 +30,7 @@
             {
                 <div class="d-flex align-center mt-1">
                     <div class="d-flex align-center" style="flex:1;">
-                        @if (Task.DueDate is not null)
+                        @if (Task.DueDate is not null && Task.Status != TodoStatus.Done)
                         {
                             <MudText Typo="Typo.caption">
                                 <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" />
@@ -70,7 +70,7 @@
                 <div class="d-flex align-center mt-1" style="gap:4px;">
                     <MudText Typo="Typo.caption" Color="Color.Info">
                         <MudIcon Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small" />
-                        冻结 @FrozenDuration(Task)
+                        冻结 @FrozenDuration(Task)@(Task.FrozeAt is not null ? $"（{Task.FrozeAt:MM/dd HH:mm}）" : "")
                     </MudText>
                     @if (!string.IsNullOrWhiteSpace(Task.FrozenReason))
                     {
@@ -93,7 +93,7 @@
                 {
                     <div class="d-flex align-center mt-1">
                         <div class="d-flex align-center" style="flex:1;">
-                            @if (Task.DueDate is not null)
+                            @if (Task.DueDate is not null && Task.Status != TodoStatus.Done)
                             {
                                 <MudText Typo="Typo.caption">
                                     <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" />
@@ -126,7 +126,7 @@
                 {
                     <MudText Typo="Typo.caption" Color="Color.Info" Class="mt-1">
                         <MudIcon Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small" />
-                        冻结 @FrozenDuration(Task)
+                        冻结 @FrozenDuration(Task)@(Task.FrozeAt is not null ? $"（{Task.FrozeAt:MM/dd HH:mm}）" : "")
                         @if (!string.IsNullOrWhiteSpace(Task.FrozenReason))
                         {
                             <span style="opacity:.7;"> · @Task.FrozenReason</span>

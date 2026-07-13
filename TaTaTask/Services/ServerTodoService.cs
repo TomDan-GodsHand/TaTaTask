@@ -132,6 +132,15 @@ public class ServerTodoService : ITodoService
             }
         }
 
+        if (request.StepsOrder is { Count: > 0 })
+        {
+            for (int i = 0; i < request.StepsOrder.Count; i++)
+            {
+                var step = item.Steps.FirstOrDefault(s => s.Id == request.StepsOrder[i]);
+                if (step is not null) step.SortOrder = i;
+            }
+        }
+
         await _db.SaveChangesAsync();
         return ToDto(item);
     }
@@ -256,6 +265,34 @@ public class ServerTodoService : ITodoService
         task.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return ToDto(task);
+    }
+
+    public async Task<TodoItemDto?> UpdateStepAsync(int todoId, int stepId, string title)
+    {
+        var task = await _db.TodoItems.Include(t => t.Steps)
+            .FirstOrDefaultAsync(t => t.Id == todoId && t.UserId == Uid);
+        var step = task?.Steps.FirstOrDefault(s => s.Id == stepId);
+        if (task is null || step is null) return null;
+
+        step.Title = title.Trim();
+        task.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return ToDto(task);
+    }
+
+    public async Task ReorderStepsAsync(int todoId, List<int> stepIds)
+    {
+        var task = await _db.TodoItems.Include(t => t.Steps)
+            .FirstOrDefaultAsync(t => t.Id == todoId && t.UserId == Uid);
+        if (task is null || stepIds.Count == 0) return;
+
+        for (int i = 0; i < stepIds.Count; i++)
+        {
+            var step = task.Steps.FirstOrDefault(s => s.Id == stepIds[i]);
+            if (step is not null) step.SortOrder = i;
+        }
+        task.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
     }
 
     public async Task<TodoItemDto> ArchiveAsync(int id)
