@@ -17,4 +17,6 @@ public interface ITodoService
     Task<TodoItemDto> ArchiveAsync(int id);
     Task<List<TodoItemDto>> GetArchivedAsync(string? tag, DateTime? from, DateTime? to, string? q);
     Task<UserSettingsDto> GetUserSettingsAsync();
+    Task<TodoItemDto?> UpdateStepAsync(int todoId, int stepId, string title);
+    Task ReorderStepsAsync(int todoId, List<int> stepIds);
 }

@@ -99,4 +99,15 @@ public class ClientTodoService : ITodoService
     {
         return await _http.GetFromJsonAsync<UserSettingsDto>("api/user/settings") ?? new();
     }
+
+    public async Task<TodoItemDto?> UpdateStepAsync(int todoId, int stepId, string title)
+    {
+        var resp = await _http.PutAsJsonAsync($"api/todos/{todoId}/steps/{stepId}", new UpdateStepRequest { Title = title });
+        return resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<TodoItemDto>() : null;
+    }
+
+    public async Task ReorderStepsAsync(int todoId, List<int> stepIds)
+    {
+        await _http.PutAsJsonAsync($"api/todos/{todoId}/steps/reorder", new StepReorderRequest { StepIds = stepIds });
+    }
 }

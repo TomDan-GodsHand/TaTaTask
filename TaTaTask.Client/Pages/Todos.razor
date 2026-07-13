@@ -99,19 +99,19 @@
 </div>
 </div>
 
-@if (_showCreate)
+@if (_modalVisible)
 {
     <div style="position:fixed; inset:0; background-color:rgba(0,0,0,0.5); z-index:9990;"></div>
     <div style="position:fixed; inset:0; z-index:9991; display:flex; align-items:center; justify-content:center; padding:16px;">
         <MudPaper Class="pa-5" Elevation="8" Style="width:480px; max-width:100%; max-height:90vh; overflow-y:auto;">
-            <MudText Typo="Typo.h6" Class="mb-3">新建任务 · @StatusName(_createStatus)</MudText>
-            <MudTextField @bind-Value="_cTitle" Label="标题" Required="true" Immediate="true" Margin="Margin.Dense" />
-            <MudTextField @bind-Value="_cDescription" Label="描述" Lines="2" Margin="Margin.Dense" Class="mt-2" />
-            <MudTextField @bind-Value="_cTags" Label="标签(逗号分隔)" Margin="Margin.Dense" Class="mt-2" />
+            <MudText Typo="Typo.h6" Class="mb-3">@_dialogTitle</MudText>
+            <MudTextField @bind-Value="_mTitle" Label="标题" Required="true" Immediate="true" Margin="Margin.Dense" />
+            <MudTextField @bind-Value="_mDescription" Label="描述" Lines="2" Margin="Margin.Dense" Class="mt-2" />
+            <MudTextField @bind-Value="_mTags" Label="标签(逗号分隔)" Margin="Margin.Dense" Class="mt-2" />
             <div class="d-flex mt-2" style="gap:8px;">
                 <div style="flex:1;">
                     <label class="mud-input-label" style="font-size:.75rem;">优先级</label>
-                    <select class="form-control" @bind="_cPriority">
+                    <select class="form-control" @bind="_mPriority">
                         <option value="0">无</option>
                         <option value="1">!</option>
                         <option value="2">!!</option>
@@ -119,142 +119,86 @@
                         <option value="4">!!!!</option>
                     </select>
                 </div>
-                @if (_cDue is not null)
-                {
-                    <MudNumericField @bind-Value="_cWarn" Label="临期(h)" Min="0" Margin="Margin.Dense" />
-                }
+                <MudNumericField @bind-Value="_mWarn" Label="临期(h)" Min="0" Margin="Margin.Dense" />
             </div>
             <div class="mt-2">
                 <label class="mud-input-label" style="font-size:.75rem;">截止时间(可留空)</label>
-                @if (_cDue is null)
+                @if (_mDue is null)
                 {
                     <div>
                         <MudButton Size="Size.Small" Variant="Variant.Outlined"
                                    StartIcon="@Icons.Material.Filled.Schedule"
-                                   OnClick="@(() => { _cDue = DateTime.Now.AddDays(_settingsDefaultDueDays); _cWarn = _settingsDefaultWarningHours; })">添加截止时间</MudButton>
+                                   OnClick="@AddDueDate">添加截止时间</MudButton>
                     </div>
                 }
                 else
                 {
                     <div class="d-flex align-center" style="gap:4px;">
-                        <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="_cDue" class="form-control" />
+                        <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="_mDue" class="form-control" />
                         <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
-                                       OnClick="@(() => { _cDue = null; _cWarn = null; })" />
+                                       OnClick="@(() => { _mDue = null; _mWarn = null; })" />
                     </div>
                 }
             </div>
 
             <MudDivider Class="my-3" />
             <MudText Typo="Typo.subtitle2" Class="mb-1">子步骤</MudText>
-            @if (_cSteps.Count > 0)
+            @if (_mExistingSteps.Count > 0 || _mNewSteps.Count > 0)
             {
                 <div class="mb-2">
-                    @for (int i = 0; i < _cSteps.Count; i++)
+                    @if (_mExistingSteps.Count > 0)
+                    {
+                        @foreach (var step in _mExistingSteps)
+                        {
+                        <div class="d-flex align-center" style="gap:4px;"
+                             draggable="true"
+                             @ondragstart="(e) => OnDragStart(e, step)"
+                             @ondragover:preventDefault
+                             @ondrop="(e) => OnDrop(e, step)">
+                            @if (_mode == ModalMode.Edit)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.DragHandle" Size="Size.Small" Class="mud-text-secondary" Style="cursor:grab;" />
+                            }
+                            @if (_editingStepId == step.Id)
+                            {
+                                <MudTextField @bind-Value="_editingStepTitle" Immediate="true"
+                                              Margin="Margin.Dense" Variant="Variant.Text" Class="flex-grow-1"
+                                              OnKeyUp="@(async e => { if (e.Key == "Enter") await SaveStepTitleEdit(step); })"
+                                              OnBlur="@(() => SaveStepTitleEdit(step))" />
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2" Style="@($"flex:1;{(_mode == ModalMode.Edit ? "cursor:pointer;" : "")}")"
+                                         @onclick="@(_mode == ModalMode.Edit ? () => BeginStepEdit(step) : () => { })">@step.Title</MudText>
+                            }
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                           OnClick="@(() => RemoveExistingStep(step))" />
+                        </div>
+                        }
+                    }
+                    @for (int i = 0; i < _mNewSteps.Count; i++)
                     {
                         var idx = i;
                         <div class="d-flex align-center" style="gap:4px;">
-                            <MudText Typo="Typo.body2" Style="flex:1;">@_cSteps[idx]</MudText>
+                            <MudText Typo="Typo.body2" Style="flex:1; color:var(--mud-palette-text-secondary);">@_mNewSteps[idx]</MudText>
                             <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
-                                           OnClick="@(() => _cSteps.RemoveAt(idx))" />
+                                           OnClick="@(() => _mNewSteps.RemoveAt(idx))" />
                         </div>
                     }
                 </div>
             }
             <div class="d-flex" style="gap:4px;">
-                <MudTextField @bind-Value="_cStepInput" Placeholder="新增子步骤…"
+                <MudTextField @bind-Value="_mStepInput" Placeholder="新增子步骤…"
                               Variant="Variant.Text" Margin="Margin.Dense"
-                              OnKeyUp="OnCreateStepKey" Class="flex-grow-1" />
+                              OnKeyUp="OnStepInputKey" Class="flex-grow-1" />
                 <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary"
-                               OnClick="AddCreateStep" />
+                               OnClick="AddNewStep" />
             </div>
 
             <div class="d-flex justify-end mt-4" style="gap:8px;">
-                <MudButton OnClick="CloseCreate">取消</MudButton>
+                <MudButton OnClick="CloseModal">取消</MudButton>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           Disabled="@string.IsNullOrWhiteSpace(_cTitle)" OnClick="SubmitCreate">创建</MudButton>
-            </div>
-        </MudPaper>
-    </div>
-}
-
-@if (_editTarget is not null)
-{
-    <div style="position:fixed; inset:0; background-color:rgba(0,0,0,0.5); z-index:9990;"></div>
-    <div style="position:fixed; inset:0; z-index:9991; display:flex; align-items:center; justify-content:center; padding:16px;">
-        <MudPaper Class="pa-5" Elevation="8" Style="width:480px; max-width:100%; max-height:90vh; overflow-y:auto;">
-            <MudText Typo="Typo.h6" Class="mb-3">编辑任务</MudText>
-            <MudTextField @bind-Value="_editTitle" Label="标题" Required="true" Immediate="true" Margin="Margin.Dense" />
-            <MudTextField @bind-Value="_editDescription" Label="描述" Lines="2" Margin="Margin.Dense" Class="mt-2" />
-            <MudTextField @bind-Value="_editTags" Label="标签(逗号分隔)" Margin="Margin.Dense" Class="mt-2" />
-            <div class="d-flex mt-2" style="gap:8px;">
-                <div style="flex:1;">
-                    <label class="mud-input-label" style="font-size:.75rem;">优先级</label>
-                    <select class="form-control" @bind="_editPriority">
-                        <option value="0">无</option>
-                        <option value="1">!</option>
-                        <option value="2">!!</option>
-                        <option value="3">!!!</option>
-                        <option value="4">!!!!</option>
-                    </select>
-                </div>
-                <MudNumericField @bind-Value="_editWarn" Label="临期(h)" Min="0" Margin="Margin.Dense" />
-            </div>
-            <div class="mt-2">
-                <label class="mud-input-label" style="font-size:.75rem;">截止时间</label>
-                @if (_editDue is null)
-                {
-                    <div>
-                        <MudButton Size="Size.Small" Variant="Variant.Outlined"
-                                   StartIcon="@Icons.Material.Filled.Schedule"
-                                   OnClick="@(() => { _editDue = DateTime.Now; })">添加截止时间</MudButton>
-                    </div>
-                }
-                else
-                {
-                    <div class="d-flex align-center" style="gap:4px;">
-                        <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="_editDue" class="form-control" />
-                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
-                                       OnClick="@(() => { _editDue = null; })" />
-                    </div>
-                }
-            </div>
-
-            <MudDivider Class="my-3" />
-            <MudText Typo="Typo.subtitle2" Class="mb-1">子步骤</MudText>
-            @if (_editSteps.Count > 0 || _editStepsToAdd.Count > 0)
-            {
-                <div class="mb-2">
-                    @foreach (var step in _editSteps)
-                    {
-                        <div class="d-flex align-center" style="gap:4px;">
-                            <MudText Typo="Typo.body2" Style="flex:1;">@step.Title</MudText>
-                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
-                                           OnClick="@(() => RemoveEditExistingStep(step))" />
-                        </div>
-                    }
-                    @for (int i = 0; i < _editStepsToAdd.Count; i++)
-                    {
-                        var idx = i;
-                        <div class="d-flex align-center" style="gap:4px;">
-                            <MudText Typo="Typo.body2" Style="flex:1; color:var(--mud-palette-text-secondary);">@_editStepsToAdd[idx]</MudText>
-                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
-                                           OnClick="@(() => _editStepsToAdd.RemoveAt(idx))" />
-                        </div>
-                    }
-                </div>
-            }
-            <div class="d-flex" style="gap:4px;">
-                <MudTextField @bind-Value="_editStepInput" Placeholder="新增子步骤…"
-                              Variant="Variant.Text" Margin="Margin.Dense"
-                              OnKeyUp="OnEditStepKey" Class="flex-grow-1" />
-                <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary"
-                               OnClick="AddEditStep" />
-            </div>
-
-            <div class="d-flex justify-end mt-4" style="gap:8px;">
-                <MudButton OnClick="CancelEdit">取消</MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           Disabled="@string.IsNullOrWhiteSpace(_editTitle)" OnClick="SaveEdit">保存</MudButton>
+                           Disabled="@string.IsNullOrWhiteSpace(_mTitle)" OnClick="SubmitModal">@(_mode == ModalMode.Create ? "创建" : "保存")</MudButton>
             </div>
         </MudPaper>
     </div>
@@ -324,31 +268,33 @@
     private string? Q { get; set; }
 
     private List<TodoItemDto> _tasks = new();
-    private bool _showCreate;
-    private TodoStatus _createStatus;
-    private string _cTitle = string.Empty;
-    private string? _cDescription;
-    private string? _cTags;
-    private int _cPriority;
-    private int? _cWarn;
-    private DateTime? _cDue;
-    private List<string> _cSteps = new();
-    private string _cStepInput = string.Empty;
     private string _search = string.Empty;
     private string? _error;
     private bool _loading;
 
-    private TodoItemDto? _editTarget;
-    private string _editTitle = string.Empty;
-    private string? _editDescription;
-    private string? _editTags;
-    private int _editPriority;
-    private int? _editWarn;
-    private DateTime? _editDue;
-    private List<TodoStepDto> _editSteps = new();
-    private readonly List<int> _editStepIdsToDelete = new();
-    private readonly List<string> _editStepsToAdd = new();
-    private string _editStepInput = string.Empty;
+    // ── 统一的创建/编辑模态框 ──
+    private enum ModalMode { Create, Edit }
+    private ModalMode _mode;
+    private bool _modalVisible;
+    private string _dialogTitle = string.Empty;
+    private TodoItemDto? _editingTask;
+    private TodoStatus _createStatus;
+
+    private string _mTitle = string.Empty;
+    private string? _mDescription;
+    private string? _mTags;
+    private int _mPriority;
+    private int? _mWarn;
+    private DateTime? _mDue;
+    private List<TodoStepDto> _mExistingSteps = new();
+    private readonly List<string> _mNewSteps = new();
+    private readonly List<int> _mStepsToDelete = new();
+    private string _mStepInput = string.Empty;
+    private bool _stepsOrderChanged;
+
+    private int? _editingStepId;
+    private string _editingStepTitle = string.Empty;
+    private TodoStepDto? _dragItem;
 
     private readonly HashSet<int> _dismissed = new();
     private bool _showAllDue;
@@ -483,19 +429,162 @@
 
     private void OpenCreate(TodoStatus status)
     {
+        _mode = ModalMode.Create;
         _createStatus = status;
-        _cTitle = string.Empty;
-        _cDescription = null;
-        _cTags = null;
-        _cPriority = 0;
-        _cWarn = null;
-        _cDue = null;
-        _cSteps = new();
-        _cStepInput = string.Empty;
-        _showCreate = true;
+        _dialogTitle = $"新建任务 · {StatusName(status)}";
+        _editingTask = null;
+        _mTitle = string.Empty;
+        _mDescription = null;
+        _mTags = null;
+        _mPriority = 0;
+        _mWarn = null;
+        _mDue = null;
+        _mExistingSteps = new();
+        _mNewSteps.Clear();
+        _mStepsToDelete.Clear();
+        _mStepInput = string.Empty;
+        _stepsOrderChanged = false;
+        _modalVisible = true;
     }
 
-    private void CloseCreate() => _showCreate = false;
+    private void HandleEdit(TodoItemDto task)
+    {
+        _mode = ModalMode.Edit;
+        _dialogTitle = "编辑任务";
+        _editingTask = task;
+        _mTitle = task.Title;
+        _mDescription = task.Description;
+        _mTags = task.Tags;
+        _mPriority = task.Priority;
+        _mWarn = task.DueWarningHours;
+        _mDue = task.DueDate;
+        _mExistingSteps = task.Steps.ToList();
+        _mNewSteps.Clear();
+        _mStepsToDelete.Clear();
+        _mStepInput = string.Empty;
+        _stepsOrderChanged = false;
+        _editingStepId = null;
+        _modalVisible = true;
+    }
+
+    private void CloseModal()
+    {
+        _modalVisible = false;
+    }
+
+    private void AddDueDate()
+    {
+        if (_mode == ModalMode.Create)
+        {
+            _mDue = DateTime.Now.AddDays(_settingsDefaultDueDays);
+            _mWarn = _settingsDefaultWarningHours;
+        }
+        else
+        {
+            _mDue = DateTime.Now;
+        }
+    }
+
+    private async Task SubmitModal()
+    {
+        if (string.IsNullOrWhiteSpace(_mTitle)) return;
+
+        if (_mode == ModalMode.Create)
+        {
+            await TodoService.CreateAsync(new CreateTodoRequest
+            {
+                Title = _mTitle.Trim(),
+                Status = _createStatus,
+                Description = string.IsNullOrWhiteSpace(_mDescription) ? null : _mDescription,
+                Tags = string.IsNullOrWhiteSpace(_mTags) ? null : _mTags,
+                Priority = _mPriority,
+                DueWarningHours = _mWarn,
+                DueDate = _mDue,
+                Steps = _mExistingSteps.Select(s => s.Title).Concat(_mNewSteps).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList(),
+            });
+        }
+        else
+        {
+            var request = new UpdateTodoRequest
+            {
+                Title = _mTitle.Trim(),
+                Description = string.IsNullOrWhiteSpace(_mDescription) ? null : _mDescription,
+                Tags = string.IsNullOrWhiteSpace(_mTags) ? null : _mTags,
+                Priority = _mPriority,
+                DueWarningHours = _mWarn,
+                DueDate = _mDue,
+                StepsToAdd = _mNewSteps.Count > 0 ? _mNewSteps.ToList() : null,
+                StepIdsToDelete = _mStepsToDelete.Count > 0 ? _mStepsToDelete.ToList() : null,
+                StepsOrder = _stepsOrderChanged ? _mExistingSteps.Select(s => s.Id).ToList() : null,
+            };
+            await TodoService.UpdateAsync(_editingTask!.Id, request);
+        }
+
+        _modalVisible = false;
+        await LoadAsync();
+        await NotifyOthersAsync();
+    }
+
+    private void AddNewStep()
+    {
+        var title = _mStepInput.Trim();
+        if (string.IsNullOrWhiteSpace(title)) return;
+        if (_mode == ModalMode.Create)
+        {
+            _mExistingSteps.Add(new TodoStepDto { Title = title, SortOrder = _mExistingSteps.Count });
+        }
+        else
+        {
+            _mNewSteps.Add(title);
+        }
+        _mStepInput = string.Empty;
+    }
+
+    private async Task OnStepInputKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") AddNewStep();
+    }
+
+    private void RemoveExistingStep(TodoStepDto step)
+    {
+        if (_mode == ModalMode.Edit)
+            _mStepsToDelete.Add(step.Id);
+        _mExistingSteps.Remove(step);
+    }
+
+    private void OnDragStart(DragEventArgs e, TodoStepDto step)
+    {
+        _dragItem = step;
+    }
+
+    private void OnDrop(DragEventArgs e, TodoStepDto target)
+    {
+        if (_dragItem is null || _dragItem == target) return;
+        var oldIdx = _mExistingSteps.IndexOf(_dragItem);
+        var newIdx = _mExistingSteps.IndexOf(target);
+        if (oldIdx < 0 || newIdx < 0) return;
+        _mExistingSteps.RemoveAt(oldIdx);
+        _mExistingSteps.Insert(newIdx, _dragItem);
+        _dragItem = null;
+        _stepsOrderChanged = true;
+    }
+
+    private void BeginStepEdit(TodoStepDto step)
+    {
+        _editingStepId = step.Id;
+        _editingStepTitle = step.Title;
+    }
+
+    private async Task SaveStepTitleEdit(TodoStepDto step)
+    {
+        var title = _editingStepTitle?.Trim();
+        _editingStepId = null;
+        if (string.IsNullOrWhiteSpace(title) || title == step.Title) return;
+
+        await TodoService.UpdateStepAsync(_editingTask!.Id, step.Id, title);
+        var local = _mExistingSteps.FirstOrDefault(s => s.Id == step.Id);
+        if (local is not null) local.Title = title;
+    }
 
     private void OpenFreeze(TodoItemDto task)
     {
@@ -538,109 +627,6 @@
         _confirmAction = null;
         if (action is not null)
             await action();
-    }
-
-    private async Task SubmitCreate()
-    {
-        if (string.IsNullOrWhiteSpace(_cTitle))
-        {
-            return;
-        }
-
-        await TodoService.CreateAsync(new CreateTodoRequest
-        {
-            Title = _cTitle.Trim(),
-            Status = _createStatus,
-            Description = string.IsNullOrWhiteSpace(_cDescription) ? null : _cDescription,
-            Tags = string.IsNullOrWhiteSpace(_cTags) ? null : _cTags,
-            Priority = _cPriority,
-            DueWarningHours = _cWarn,
-            DueDate = _cDue,
-            Steps = _cSteps.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList(),
-        });
-        _showCreate = false;
-        await LoadAsync();
-        await NotifyOthersAsync();
-    }
-
-    private void AddCreateStep()
-    {
-        var title = _cStepInput.Trim();
-        if (string.IsNullOrWhiteSpace(title))
-        {
-            return;
-        }
-        _cSteps.Add(title);
-        _cStepInput = string.Empty;
-    }
-
-    private async Task OnCreateStepKey(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter")
-        {
-            AddCreateStep();
-        }
-    }
-
-    private void HandleEdit(TodoItemDto task)
-    {
-        _editTarget = task;
-        _editTitle = task.Title;
-        _editDescription = task.Description;
-        _editTags = task.Tags;
-        _editPriority = task.Priority;
-        _editWarn = task.DueWarningHours;
-        _editDue = task.DueDate;
-        _editSteps = task.Steps.ToList();
-        _editStepIdsToDelete.Clear();
-        _editStepsToAdd.Clear();
-        _editStepInput = string.Empty;
-    }
-
-    private void CancelEdit() => _editTarget = null;
-
-    private async Task SaveEdit()
-    {
-        if (_editTarget is null || string.IsNullOrWhiteSpace(_editTitle))
-        {
-            return;
-        }
-
-        var request = new UpdateTodoRequest
-        {
-            Title = _editTitle.Trim(),
-            Description = string.IsNullOrWhiteSpace(_editDescription) ? null : _editDescription,
-            Tags = string.IsNullOrWhiteSpace(_editTags) ? null : _editTags,
-            Priority = _editPriority,
-            DueWarningHours = _editWarn,
-            DueDate = _editDue,
-            StepsToAdd = _editStepsToAdd.Count > 0 ? _editStepsToAdd.ToList() : null,
-            StepIdsToDelete = _editStepIdsToDelete.Count > 0 ? _editStepIdsToDelete.ToList() : null,
-        };
-
-        await TodoService.UpdateAsync(_editTarget.Id, request);
-        _editTarget = null;
-        await LoadAsync();
-        await NotifyOthersAsync();
-    }
-
-    private void AddEditStep()
-    {
-        var title = _editStepInput.Trim();
-        if (string.IsNullOrWhiteSpace(title)) return;
-        _editStepsToAdd.Add(title);
-        _editStepInput = string.Empty;
-    }
-
-    private void RemoveEditExistingStep(TodoStepDto step)
-    {
-        _editStepIdsToDelete.Add(step.Id);
-        _editSteps.Remove(step);
-    }
-
-    private void OnEditStepKey(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter") AddEditStep();
     }
 
     private void HandleAdvance(TodoItemDto task)

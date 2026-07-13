@@ -10,4 +10,5 @@ public class UpdateTodoRequest
     public int? DueWarningHours { get; set; }
     public List<string>? StepsToAdd { get; set; }
     public List<int>? StepIdsToDelete { get; set; }
+    public List<int>? StepsOrder { get; set; }
 }
