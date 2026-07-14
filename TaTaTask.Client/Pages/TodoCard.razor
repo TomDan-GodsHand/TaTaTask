@@ -47,7 +47,7 @@
                     </div>
                     @if (!string.IsNullOrWhiteSpace(Task.Tags))
                     {
-                        var tagList = Task.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        var tagList = Task.Tags.Split(new[] { ',', '，' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                         <div class="d-flex align-center" style="gap:4px; margin-left:auto;">
                             @foreach (var tag in tagList.Take(2))
                             {
@@ -110,7 +110,7 @@
                         </div>
                     @if (!string.IsNullOrWhiteSpace(Task.Tags))
                     {
-                        var tagList = Task.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        var tagList = Task.Tags.Split(new[] { ',', '，' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                         <div class="d-flex align-center" style="gap:4px; margin-left:auto; flex-wrap:wrap;">
                             @foreach (var tag in tagList)
                             {
