@@ -62,7 +62,7 @@ public class ServerTodoService : ITodoService
             Title = request.Title.Trim(),
             Status = request.Status,
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description,
-            Tags = string.IsNullOrWhiteSpace(request.Tags) ? null : request.Tags,
+            Tags = NormalizeTags(request.Tags),
             Priority = request.Priority,
             DueDate = request.DueDate,
             DueWarningHours = request.DueWarningHours,
@@ -103,7 +103,7 @@ public class ServerTodoService : ITodoService
         item.Title = request.Title.Trim();
         item.Description = request.Description;
         item.Priority = request.Priority;
-        item.Tags = request.Tags;
+        item.Tags = NormalizeTags(request.Tags);
         item.DueDate = request.DueDate;
         item.DueWarningHours = request.DueWarningHours;
         item.UpdatedAt = DateTime.UtcNow;
@@ -458,6 +458,13 @@ public class ServerTodoService : ITodoService
     {
         var hours = Math.Max((t.DueDate!.Value - now).TotalHours, 1);
         return Weight(t.Priority) * (1.0 / hours);
+    }
+
+    private static string? NormalizeTags(string? tags)
+    {
+        if (string.IsNullOrWhiteSpace(tags)) return null;
+        var parts = tags.Split(new[] { ',', '，' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length == 0 ? null : string.Join(",", parts);
     }
 
     private static TodoItemDto ToDto(TodoItem t) => new()
