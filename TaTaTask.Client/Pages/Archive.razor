@@ -44,25 +44,118 @@ else
                 <th>优先级</th>
                 <th>完成时间</th>
                 <th>归档时间</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
             @foreach (var t in _items)
             {
-                <tr>
+                <tr Style="cursor:pointer;" @onclick="() => OpenDetail(t)">
                     <td>@t.Title</td>
                     <td>@t.Tags</td>
                     <td>@PriorityLabel(t.Priority)</td>
                     <td>@t.DoneAt?.ToString("yyyy-MM-dd HH:mm")</td>
                     <td>@t.ArchivedAt?.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                       aria-label="查看详情" OnClick="@(() => OpenDetail(t))" />
+                    </td>
                 </tr>
             }
         </tbody>
     </MudSimpleTable>
 }
 
+@if (_detail is not null)
+{
+    <div style="position:fixed; inset:0; background-color:rgba(0,0,0,0.5); z-index:9990;" @onclick="CloseDetail"></div>
+    <div style="position:fixed; inset:0; z-index:9991; display:flex; align-items:center; justify-content:center; padding:16px; pointer-events:none;">
+        <MudPaper Class="pa-5" Elevation="8" Style="width:520px; max-width:100%; max-height:90vh; overflow-y:auto; pointer-events:auto;">
+            <div class="d-flex align-center justify-space-between mb-3">
+                <MudText Typo="Typo.h6">任务详情</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="CloseDetail" />
+            </div>
+
+            <MudText Typo="Typo.subtitle1" Class="mb-2"><b>@_detail.Title</b></MudText>
+
+            <div class="d-flex flex-wrap mb-2" style="gap:8px 24px;">
+                <div>
+                    <div class="mud-input-label" style="font-size:.75rem;">优先级</div>
+                    <div>@PriorityLabel(_detail.Priority)</div>
+                </div>
+                <div>
+                    <div class="mud-input-label" style="font-size:.75rem;">标签</div>
+                    <div>@(_detail.Tags ?? "—")</div>
+                </div>
+                <div>
+                    <div class="mud-input-label" style="font-size:.75rem;">创建时间</div>
+                    <div>@_detail.CreatedAt.ToString("yyyy-MM-dd HH:mm")</div>
+                </div>
+                <div>
+                    <div class="mud-input-label" style="font-size:.75rem;">截止时间</div>
+                    <div>@(_detail.DueDate?.ToString("yyyy-MM-dd HH:mm") ?? "—")</div>
+                </div>
+                <div>
+                    <div class="mud-input-label" style="font-size:.75rem;">完成时间</div>
+                    <div>@(_detail.DoneAt?.ToString("yyyy-MM-dd HH:mm") ?? "—")</div>
+                </div>
+                <div>
+                    <div class="mud-input-label" style="font-size:.75rem;">归档时间</div>
+                    <div>@_detail.ArchivedAt?.ToString("yyyy-MM-dd HH:mm")</div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_detail.Description))
+            {
+                <div class="mb-3">
+                    <div class="mud-input-label" style="font-size:.75rem;">描述</div>
+                    <MudPaper Elevation="0" Class="pa-2"
+                              Style="border:1px solid var(--mud-palette-lines-default); border-radius:4px; white-space:pre-wrap;">
+                        @_detail.Description
+                    </MudPaper>
+                </div>
+            }
+
+            <div>
+                <div class="mud-input-label" style="font-size:.75rem;">步骤（@_detail.Steps.Count）</div>
+                @if (_detail.Steps.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mt-1">无步骤</MudText>
+                }
+                else
+                {
+                    <div class="mt-1" style="display:flex; flex-direction:column; gap:4px;">
+                        @foreach (var s in _detail.Steps)
+                        {
+                            <div class="d-flex align-center" style="gap:6px;">
+                                <MudIcon Icon="@(s.IsCompleted ? Icons.Material.Filled.CheckCircle : Icons.Material.Outlined.RadioButtonUnchecked)"
+                                         Size="Size.Small"
+                                         Color="@(s.IsCompleted ? Color.Success : Color.Default)" />
+                                <MudText Typo="Typo.body2">@s.Title</MudText>
+                                @if (s.DueDate.HasValue)
+                                {
+                                    <MudText Typo="Typo.caption" Class="ml-auto">@s.DueDate.Value.ToString("yyyy-MM-dd HH:mm")</MudText>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="d-flex justify-end mt-3">
+                <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="CloseDetail">关闭</MudButton>
+            </div>
+        </MudPaper>
+    </div>
+}
+
 @code {
     private List<TodoItemDto> _items = new();
+    private TodoItemDto? _detail;
+
+    private void OpenDetail(TodoItemDto item) => _detail = item;
+
+    private void CloseDetail() => _detail = null;
     private string? _q;
     private string? _tag;
     private DateTime? _from;
