@@ -272,7 +272,8 @@
     private static string FrozenDuration(TodoItemDto task)
     {
         if (task.FrozeAt is not { } frozeAt) return string.Empty;
-        var days = (int)((DateTime.UtcNow - frozeAt).TotalDays);
+        // FrozeAt 已经是用户时区墙钟时间，用本地时间比较
+        var days = (int)((DateTime.Now - frozeAt).TotalDays);
         return days switch
         {
             0 => "不到1天",

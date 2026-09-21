@@ -1,0 +1,515 @@
+@using TaTaTask.Client.Services
+@using TaTaTask.Models.Dtos
+@using TaTaTask.Models.Enums
+@inject IScheduleService ScheduleService
+@implements IAsyncDisposable
+
+<MudText Typo="Typo.subtitle1" Class="d-flex align-center mb-2">
+    <MudIcon Icon="@Icons.Material.Filled.Today" Class="mr-1" />
+    <b>今日日程</b>
+    @if (_today is not null)
+    {
+        <MudText Typo="Typo.caption" Class="ml-2 mud-text-secondary">@_today.Date.ToString("MM/dd") · @_today.TimeZoneId</MudText>
+    }
+    @if (OnClose.HasDelegate)
+    {
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="OnClose" />
+    }
+</MudText>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2" ShowCloseIcon="true"
+              CloseIconClicked="@(() => _error = null)">@_error</MudAlert>
+}
+
+@if (_today is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    @if (!Compact)
+    {
+        <div class="d-flex align-center mb-2" style="gap:6px; flex-wrap:wrap;">
+            <input type="time" class="form-control" style="max-width:110px;" value="@_mSlotStart"
+                   @onchange="@((ChangeEventArgs e) => _mSlotStart = e.Value?.ToString() ?? string.Empty)" />
+            <input type="time" class="form-control" style="max-width:110px;" value="@_mSlotEnd"
+                   @onchange="@((ChangeEventArgs e) => _mSlotEnd = e.Value?.ToString() ?? string.Empty)" />
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="AddManualEntryAsync">加临时安排</MudButton>
+        </div>
+    }
+
+    @if (_today.Unfinished.Count > 0)
+    {
+        <MudPaper Class="pa-2 mb-3" Elevation="1" Style="border-left:4px solid var(--mud-palette-warning);">
+            <MudText Typo="Typo.subtitle2" Class="mb-1">昨日未完成 @_today.Unfinished.Count 项</MudText>
+            @foreach (var u in _today.Unfinished)
+            {
+                <div class="d-flex align-center mb-1" style="gap:4px; flex-wrap:wrap;">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="min-width:74px;">@u.Date.ToString("MM/dd") @u.TimeLabel</MudText>
+                    <MudText Typo="Typo.body2" Style="flex:1; min-width:80px;">@u.Title</MudText>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                               OnClick="@(() => CarryOverAsync(u.Id))">排进今天</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text"
+                               OnClick="@(() => FreezeAsync(u.Id))">冻结</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                               OnClick="@(() => DeleteTaskAsync(u.Id))">删除</MudButton>
+                </div>
+            }
+        </MudPaper>
+    }
+
+    @if (_today.Entries.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            今天还没有安排。去日程页加一条周规则吧。
+        </MudText>
+    }
+
+    @foreach (var e in _today.Entries)
+    {
+        var isCurrent = e.Id == _today.CurrentEntryId;
+        <MudPaper Class="pa-2 mb-2" Elevation="@(isCurrent ? 4 : 1)"
+                  Style="@(isCurrent ? "border:2px solid var(--mud-palette-primary);" : "")">
+
+            @* 第一行：时段 + 标题 + 模式 *@
+            <div class="d-flex align-center" style="gap:6px; flex-wrap:wrap;">
+                <MudText Typo="Typo.caption" Style="font-weight:700; min-width:86px;">@e.TimeLabel</MudText>
+                @if (isCurrent)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary">该做了 · 剩 @RemainText(e)</MudChip>
+                }
+                <MudText Typo="Typo.body2" Style="flex:1; min-width:80px;">@e.Title</MudText>
+                @if (e.RuleMode is not null)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="mud-text-secondary">
+                        @(e.RuleMode == ScheduleRuleMode.Generate ? "生成" : "挑选")
+                    </MudChip>
+                }
+            </div>
+
+            @* 第二行：状态区 *@
+            @if (e.State == ScheduleEntryState.Skipped)
+            {
+                <MudText Typo="Typo.caption" Class="mt-1 mud-text-secondary">今天已跳过</MudText>
+            }
+            else if (e.IsTaskDeleted && e.TodoItemId is null)
+            {
+                <MudText Typo="Typo.caption" Class="mt-1" Style="color:var(--mud-palette-error);">
+                    任务已删除（仅保留记录）
+                </MudText>
+            }
+            else if (e.State == ScheduleEntryState.Pending || _pickerEntryId == e.Id)
+            {
+                @if (e.State == ScheduleEntryState.Pending)
+                {
+                    <div class="d-flex align-center mt-1" style="gap:6px;">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="flex:1;">待选：还没挑任务</MudText>
+                        @if (_pickerEntryId == e.Id)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="ClosePicker">收起</MudButton>
+                        }
+                        else
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                       OnClick="@(() => OpenPickerAsync(e.Id))">选择任务</MudButton>
+                        }
+                    </div>
+                }
+                @if (_pickerEntryId == e.Id)
+                {
+                    <MudPaper Class="pa-2 mt-2" Elevation="0" Style="background:var(--mud-palette-background-gray);">
+                        @if (_candidates is null)
+                        {
+                            <MudProgressLinear Indeterminate="true" />
+                        }
+                        else if (_candidates.Count == 0)
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                这个标签下没有可用的未完成任务（未归档、未完成、未冻结）。
+                            </MudText>
+                        }
+                        else if (_pickedCandidate is null)
+                        {
+                            @foreach (var c in _candidates)
+                            {
+                                <div class="d-flex align-center" style="gap:6px;">
+                                    <MudText Typo="Typo.body2" Style="flex:1; min-width:70px;">@c.Title</MudText>
+                                    @if (!string.IsNullOrWhiteSpace(c.Tags))
+                                    {
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary">@c.Tags</MudText>
+                                    }
+                                    @if (c.StepCount > 0)
+                                    {
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary">@c.DoneStepCount/@c.StepCount</MudText>
+                                    }
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                                               OnClick="@(() => ChooseCandidate(c))">选它</MudButton>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Class="mb-1">
+                                今天做哪些步骤？<b>@_pickedCandidate.Title</b>
+                            </MudText>
+                            @if (_pickedCandidate.Steps.Count == 0)
+                            {
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">这个任务没有子步骤，勾一下就算完成。</MudText>
+                            }
+                            @foreach (var s in _pickedCandidate.Steps.OrderBy(s => s.SortOrder))
+                            {
+                                if (s.IsCompleted) { continue; }
+                                <div>
+                                    <MudCheckBox T="bool" Dense="true" Value="@_pickedStepIds.Contains(s.Id)"
+                                                 ValueChanged="@((bool v) => TogglePickedStep(s.Id, v))" Label="@s.Title" />
+                                </div>
+                            }
+                            <div class="d-flex justify-end mt-1" style="gap:6px;">
+                                <MudButton Size="Size.Small" OnClick="@(() => _pickedCandidate = null)">返回</MudButton>
+                                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                           OnClick="ConfirmPickAsync">加入今日</MudButton>
+                            </div>
+                        }
+                    </MudPaper>
+                }
+            }
+            else if (e.State == ScheduleEntryState.Completed)
+            {
+                <div class="d-flex align-center mt-1" style="gap:6px;">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Style="color:var(--mud-palette-success);" />
+                    <MudText Typo="Typo.caption" Style="color:var(--mud-palette-success); flex:1;">
+                        已完成@(e.TotalSteps > 0 ? $" {e.DoneSteps}/{e.TotalSteps} 步" : "")
+                    </MudText>
+                </div>
+            }
+            else if (e.TotalSteps == 0)
+            {
+                @* 无子步骤：单项勾选 *@
+                <div class="d-flex align-center mt-1" style="gap:6px;">
+                    <MudIconButton Icon="@Icons.Material.Filled.RadioButtonUnchecked" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => CompleteEntryAsync(e.Id))" />
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="flex:1;">没有子步骤，勾一下完成</MudText>
+                </div>
+            }
+            else
+            {
+                @* 一次只显示一个步骤，勾完自动出下一个 *@
+                <div class="d-flex align-center mt-1" style="gap:6px;">
+                    <MudIconButton Icon="@Icons.Material.Filled.RadioButtonUnchecked" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => ToggleStepAsync(e.Id, e.CurrentStep!.TodoStepId))" />
+                    <MudText Typo="Typo.body2" Style="flex:1; min-width:70px;">@e.CurrentStep?.Title</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@e.DoneSteps/@e.TotalSteps</MudText>
+                </div>
+                @if (e.DoneSteps > 0)
+                {
+                    <div class="mt-1">
+                        @foreach (var s in e.Steps.Where(s => s.IsCompleted).OrderBy(s => s.SortOrder))
+                        {
+                            <div class="d-flex align-center" style="gap:6px;">
+                                <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Style="color:var(--mud-palette-success);" />
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary"
+                                         Style="text-decoration:line-through;">@s.Title</MudText>
+                                <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small"
+                                               OnClick="@(() => ToggleStepAsync(e.Id, s.TodoStepId))" />
+                            </div>
+                        }
+                    </div>
+                }
+            }
+
+            @* 页面模式下的额外操作 *@
+            @if (!Compact && e.State != ScheduleEntryState.Skipped)
+            {
+                <div class="d-flex justify-end mt-1" style="gap:4px;">
+                    @if (e.TodoItemId is not null && e.State == ScheduleEntryState.Scheduled)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => OpenPickerAsync(e.Id))">
+                            换任务
+                        </MudButton>
+                    }
+                    @if (e.TodoItemId is not null && e.TaskSteps.Count > 0)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleStepEditor(e))">
+                            @(_stepEditorEntryId == e.Id ? "收起步骤" : "改今日步骤")
+                        </MudButton>
+                    }
+                    @if (e.RuleId is int rid)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => SkipTodayAsync(rid))">
+                            跳过今天
+                        </MudButton>
+                    }
+                </div>
+
+                @if (_stepEditorEntryId == e.Id)
+                {
+                    <MudPaper Class="pa-2 mt-2" Elevation="0" Style="background:var(--mud-palette-background-gray);">
+                        <MudText Typo="Typo.caption" Class="mb-1">今天做哪些步骤？（已完成的不受影响）</MudText>
+                        @foreach (var s in e.TaskSteps.OrderBy(s => s.SortOrder))
+                        {
+                            <div>
+                                <MudCheckBox T="bool" Dense="true"
+                                             Value="@(s.IsCompleted || _editedStepIds.Contains(s.Id))"
+                                             Disabled="@s.IsCompleted"
+                                             ValueChanged="@((bool v) => ToggleEditedStep(s.Id, v, s.IsCompleted))"
+                                             Label="@s.Title" />
+                            </div>
+                        }
+                        <div class="d-flex justify-end mt-1" style="gap:6px;">
+                            <MudButton Size="Size.Small" OnClick="@(() => _stepEditorEntryId = null)">取消</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                       OnClick="@(() => SaveEntryStepsAsync(e.Id))">保存</MudButton>
+                        </div>
+                    </MudPaper>
+                }
+            }
+        </MudPaper>
+    }
+
+    @if (_today.PendingCount > 0)
+    {
+        <MudText Typo="Typo.caption" Class="mt-2 mud-text-secondary">
+            还有 @_today.PendingCount 条待选，挑完就齐了。
+        </MudText>
+    }
+}
+
+@code {
+    /// <summary>true = 看板侧边抽屉（精简）；false = 日程页（多出「跳过今天」等操作）。</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private TodayScheduleDto? _today;
+    private string? _error;
+
+    private int? _pickerEntryId;
+    private List<ScheduleCandidateDto>? _candidates;
+    private ScheduleCandidateDto? _pickedCandidate;
+    private readonly HashSet<int> _pickedStepIds = new();
+
+    /// <summary>正在编辑「今日步骤」的条目</summary>
+    private int? _stepEditorEntryId;
+    private readonly HashSet<int> _editedStepIds = new();
+
+    private CancellationTokenSource? _cts;
+
+    /// <summary>供父组件（日程页）刷新用：改完规则后今日视图要重新物化。</summary>
+    public async Task RefreshAsync()
+    {
+        await ReloadAsync();
+        StateHasChanged();
+    }
+
+    // ---------- 手动临时安排 ----------
+
+    private string _mSlotStart = "12:00";
+    private string _mSlotEnd = "13:00";
+
+    private async Task AddManualEntryAsync()
+    {
+        _error = null;
+        if (!TimeOnly.TryParse(_mSlotStart, out var start) || !TimeOnly.TryParse(_mSlotEnd, out var end))
+        {
+            _error = "时间格式不正确";
+            return;
+        }
+        if (end <= start)
+        {
+            _error = "结束时间必须晚于开始时间";
+            return;
+        }
+
+        await ApplyAsync(() => ScheduleService.CreateManualEntryAsync(new CreateManualEntryRequest
+        {
+            StartTime = start,
+            EndTime = end,
+        }));
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+
+        // 每分钟对齐一次「当前时段」高亮（跨时段/跨天自动跟上）
+        _cts = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            while (!_cts.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(60), _cts.Token);
+                    await InvokeAsync(async () =>
+                    {
+                        await ReloadAsync();
+                        StateHasChanged();
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch
+                {
+                    // 后台刷新失败不打扰用户
+                }
+            }
+        });
+    }
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _today = await ScheduleService.GetTodayAsync();
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    /// <summary>当前时段还剩多久（用服务端给的用户时区墙钟时间算）。</summary>
+    private string RemainText(ScheduleEntryDto entry)
+    {
+        if (_today is null) return string.Empty;
+        var span = entry.EndTime.ToTimeSpan() - _today.NowTime.ToTimeSpan();
+        if (span.TotalMinutes < 1) return "不到 1 分钟";
+        if (span.TotalHours >= 1) return $"{(int)span.TotalHours} 小时 {span.Minutes} 分";
+        return $"{(int)span.TotalMinutes} 分钟";
+    }
+
+    private async Task ApplyAsync(Func<Task<TodayScheduleDto?>> action)
+    {
+        try
+        {
+            var result = await action();
+            if (result is not null) _today = result;
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private Task ToggleStepAsync(int entryId, int todoStepId)
+        => ApplyAsync(() => ScheduleService.ToggleStepAsync(entryId, todoStepId));
+
+    private Task CompleteEntryAsync(int entryId)
+        => ApplyAsync(() => ScheduleService.CompleteEntryAsync(entryId));
+
+    private Task SkipTodayAsync(int ruleId)
+        => ApplyAsync(() => ScheduleService.SkipTodayAsync(ruleId));
+
+    private Task CarryOverAsync(int entryId)
+        => ApplyAsync(() => ScheduleService.CarryOverAsync(entryId));
+
+    private Task FreezeAsync(int entryId)
+        => ApplyAsync(() => ScheduleService.FreezeEntryTaskAsync(entryId));
+
+    private Task DeleteTaskAsync(int entryId)
+        => ApplyAsync(() => ScheduleService.DeleteEntryTaskAsync(entryId));
+
+    // ---------- 待选：挑任务 + 选今日步骤 ----------
+
+    private async Task OpenPickerAsync(int entryId)
+    {
+        _pickerEntryId = entryId;
+        _pickedCandidate = null;
+        _pickedStepIds.Clear();
+        _candidates = null;
+        try
+        {
+            _candidates = await ScheduleService.GetCandidatesAsync(entryId);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _candidates = new();
+        }
+    }
+
+    private void ClosePicker()
+    {
+        _pickerEntryId = null;
+        _candidates = null;
+        _pickedCandidate = null;
+        _pickedStepIds.Clear();
+    }
+
+    private void ChooseCandidate(ScheduleCandidateDto candidate)
+    {
+        _pickedCandidate = candidate;
+        _pickedStepIds.Clear();
+        // 默认把还没完成的步骤都排进今天
+        foreach (var s in candidate.Steps.Where(s => !s.IsCompleted))
+        {
+            _pickedStepIds.Add(s.Id);
+        }
+    }
+
+    private void TogglePickedStep(int stepId, bool selected)
+    {
+        if (selected) _pickedStepIds.Add(stepId);
+        else _pickedStepIds.Remove(stepId);
+    }
+
+    // ---------- 改今日步骤 ----------
+
+    private void ToggleStepEditor(ScheduleEntryDto entry)
+    {
+        if (_stepEditorEntryId == entry.Id)
+        {
+            _stepEditorEntryId = null;
+            return;
+        }
+
+        _stepEditorEntryId = entry.Id;
+        _editedStepIds.Clear();
+        // 今天已排定的 + 任务里已经完成过的，都算选中
+        foreach (var s in entry.Steps) _editedStepIds.Add(s.TodoStepId);
+        foreach (var s in entry.TaskSteps.Where(s => s.IsCompleted)) _editedStepIds.Add(s.Id);
+    }
+
+    private void ToggleEditedStep(int stepId, bool selected, bool alreadyCompleted)
+    {
+        if (alreadyCompleted) return; // 已完成的不允许取消
+        if (selected) _editedStepIds.Add(stepId);
+        else _editedStepIds.Remove(stepId);
+    }
+
+    private async Task SaveEntryStepsAsync(int entryId)
+    {
+        await ApplyAsync(() => ScheduleService.SetStepsAsync(
+            entryId, new SetEntryStepsRequest { StepIds = _editedStepIds.ToList() }));
+        _stepEditorEntryId = null;
+    }
+
+    private async Task ConfirmPickAsync()
+    {
+        if (_pickerEntryId is not { } entryId || _pickedCandidate is null) return;
+
+        var request = new PickScheduleTaskRequest
+        {
+            TodoItemId = _pickedCandidate.Id,
+            StepIds = _pickedStepIds.ToList(),
+        };
+
+        await ApplyAsync(() => ScheduleService.PickAsync(entryId, request));
+        ClosePicker();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

@@ -43,6 +43,7 @@ namespace TaTaTask
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddScoped<ICurrentUser, CurrentUser>();
             builder.Services.AddScoped<ITodoService, ServerTodoService>();
+            builder.Services.AddScoped<IScheduleService, ServerScheduleService>();
 
             builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
                 .AddCookie(options =>

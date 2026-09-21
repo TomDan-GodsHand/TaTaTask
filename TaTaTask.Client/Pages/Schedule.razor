@@ -1,0 +1,489 @@
+@page "/schedule"
+@rendermode InteractiveAuto
+@using Microsoft.AspNetCore.Authorization
+@using TaTaTask.Client.Services
+@using TaTaTask.Models.Dtos
+@using TaTaTask.Models.Enums
+@attribute [Authorize]
+@inject IScheduleService ScheduleService
+
+<PageTitle>日程</PageTitle>
+
+@* 弹出层宿主：规则弹窗里有 MudSelect，必须在本页（交互孤岛）内声明 *@
+<MudPopoverProvider />
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2" ShowCloseIcon="true"
+              CloseIconClicked="@(() => _error = null)">@_error</MudAlert>
+}
+
+<div class="schedule-page p-3">
+
+    @* ==================== 左：一周网格 ==================== *@
+    <div>
+        <div class="d-flex align-center mb-1" style="gap:10px; flex-wrap:wrap;">
+            <MudText Typo="Typo.h6" Style="flex:1;">一周安排</MudText>
+            <span class="week-legend">
+                <span class="week-legend-dot" style="background:var(--mud-palette-primary);"></span>挑选
+                <span class="week-legend-dot ml-3" style="background:var(--mud-palette-secondary);"></span>生成
+            </span>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="@(() => OpenCreate(null, null, null))">新建规则</MudButton>
+        </div>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">点空白格新建 · 点色块编辑</MudText>
+
+        <div class="week-grid">
+            <div class="week-grid-head">
+                <div></div>
+                @for (var d = 0; d < 7; d++)
+                {
+                    var dow = (DayOfWeek)((d + 1) % 7);
+                    <div class="week-day-head @(dow == _todayDow ? "is-today" : "")">@DayName(d)</div>
+                }
+            </div>
+
+            <div class="week-grid-body" style="height:@(GridHeight)px; --hour-h:@(HourHeight)px;">
+                <div class="week-gutter">
+                    @for (var h = _startHour; h < _endHour; h += 1)
+                    {
+                        <div class="week-hour-label" style="top:@(Y(h * 60))px;">@HourLabel(h)</div>
+                    }
+                </div>
+
+                @for (var d = 0; d < 7; d++)
+                {
+                    var dow = (DayOfWeek)((d + 1) % 7);
+                    var isToday = dow == _todayDow;
+                    <div class="week-col" @onclick="@((MouseEventArgs e) => OnColumnClick(dow, e))">
+                        @foreach (var b in BlocksFor(dow))
+                        {
+                            <div class="week-block @ModeClass(b.Rule) @(b.Rule.IsActive ? "" : "is-off")"
+                                 style="top:@(Y(Minutes(b.Start)))px; height:@(BlockHeight(b))px; left:calc(@(100.0 * b.Lane / b.Lanes)% + 2px); width:calc(@(100.0 / b.Lanes)% - 4px);"
+                                 title="@b.Rule.Title @b.Start.ToString("HH\\:mm")–@b.End.ToString("HH\\:mm")"
+                                 @onclick:stopPropagation="true"
+                                 @onclick="@(() => OpenEdit(b.Rule))">
+                                <div class="week-block-title">@b.Rule.Title</div>
+                                <div class="week-block-time">@b.Start.ToString("HH\\:mm")–@b.End.ToString("HH\\:mm")</div>
+                            </div>
+                        }
+                        @if (isToday && _nowTop is { } nowTop)
+                        {
+                            <div class="week-now" style="top:@(nowTop)px;"></div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* ==================== 右：今日日程 ==================== *@
+    <div class="schedule-today-col">
+        <ScheduleToday Compact="false" @ref="_todayPanel" />
+    </div>
+</div>
+
+@* ==================== 规则编辑弹窗 ==================== *@
+@if (_modalVisible)
+{
+    <div style="position:fixed; inset:0; background-color:rgba(0,0,0,0.5); z-index:9990;"></div>
+    <div style="position:fixed; inset:0; z-index:9991; display:flex; align-items:center; justify-content:center; padding:16px;">
+        <MudPaper Class="pa-5" Elevation="8" Style="width:560px; max-width:100%; max-height:90vh; overflow-y:auto;">
+            <MudText Typo="Typo.h6" Class="mb-3">@(_editingId is null ? "新建规则" : "编辑规则")</MudText>
+
+            <MudTextField @bind-Value="_mTitle" Label="名称" Required="true" Immediate="true" Margin="Margin.Dense"
+                          HelperText="如「健身」「上午工作」" />
+
+            <MudSelect T="ScheduleRuleMode" @bind-Value="_mMode" Label="模式" Margin="Margin.Dense" Class="mt-2"
+                       HelperText="@ModeHint">
+                <MudSelectItem T="ScheduleRuleMode" Value="ScheduleRuleMode.Pick">挑选（从看板挑）</MudSelectItem>
+                <MudSelectItem T="ScheduleRuleMode" Value="ScheduleRuleMode.Generate">生成（自动建卡）</MudSelectItem>
+            </MudSelect>
+
+            <label class="mud-input-label mt-3" style="font-size:.75rem;">重复（一周中的哪几天）</label>
+            <div class="d-flex flex-wrap" style="gap:4px;">
+                @for (var i = 0; i < 7; i++)
+                {
+                    // 必须在循环内取副本：MudButton 的子内容是 RenderFragment（延迟执行），
+                    // 直接捕获 i 会拿到循环结束后的 7，导致七个按钮全渲染成「周日」
+                    var idx = i;
+                    var bit = 1 << i;
+                    var on = (_mDays & bit) != 0;
+                    <MudButton Size="Size.Small"
+                               Variant="@(on ? Variant.Filled : Variant.Outlined)"
+                               Color="@(on ? Color.Primary : Color.Default)"
+                               OnClick="@(() => ToggleDay(bit))">@DayName(idx)</MudButton>
+                }
+            </div>
+            <div class="d-flex mt-1" style="gap:4px;">
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _mDays = 0b001_1111)">工作日</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _mDays = 0b110_0000)">周末</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _mDays = 0b111_1111)">每天</MudButton>
+            </div>
+
+            <div class="d-flex mt-3" style="gap:8px;">
+                <div style="flex:1;">
+                    <label class="mud-input-label" style="font-size:.75rem;">开始</label>
+                    <input type="time" class="form-control" value="@_mStart"
+                           @onchange="@((ChangeEventArgs e) => _mStart = e.Value?.ToString() ?? string.Empty)" />
+                </div>
+                <div style="flex:1;">
+                    <label class="mud-input-label" style="font-size:.75rem;">结束</label>
+                    <input type="time" class="form-control" value="@_mEnd"
+                           @onchange="@((ChangeEventArgs e) => _mEnd = e.Value?.ToString() ?? string.Empty)" />
+                </div>
+            </div>
+
+            <MudTextField @bind-Value="_mTags" Label="标签（逗号分隔）" Immediate="true" Margin="Margin.Dense" Class="mt-2"
+                          HelperText="@TagsHint" />
+
+            <div class="d-flex mt-2" style="gap:8px;">
+                <div style="flex:1;">
+                    <label class="mud-input-label" style="font-size:.75rem;">生效起始（可留空）</label>
+                    <input type="date" class="form-control" value="@_mStartDate"
+                           @onchange="@((ChangeEventArgs e) => _mStartDate = e.Value?.ToString() ?? string.Empty)" />
+                </div>
+                <div style="flex:1;">
+                    <label class="mud-input-label" style="font-size:.75rem;">生效截止（可留空）</label>
+                    <input type="date" class="form-control" value="@_mEndDate"
+                           @onchange="@((ChangeEventArgs e) => _mEndDate = e.Value?.ToString() ?? string.Empty)" />
+                </div>
+            </div>
+
+            <div class="d-flex align-center mt-2">
+                <MudSwitch T="bool" @bind-Value="_mActive" Color="Color.Primary" Label="启用" />
+            </div>
+
+            @if (_mMode == ScheduleRuleMode.Generate)
+            {
+                <MudDivider Class="my-3" />
+                <MudText Typo="Typo.subtitle2" Class="mb-1">步骤模板</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    每天建卡时复制这些步骤，默认全部排进当天；可在今日日程里取消勾选。
+                </MudText>
+                @for (var i = 0; i < _mSteps.Count; i++)
+                {
+                    var idx = i;
+                    <div class="d-flex align-center" style="gap:4px;">
+                        <MudText Typo="Typo.body2" Style="flex:1;">@_mSteps[idx]</MudText>
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                       OnClick="@(() => _mSteps.RemoveAt(idx))" />
+                    </div>
+                }
+                <div class="d-flex" style="gap:4px;">
+                    <MudTextField @bind-Value="_mStepInput" Placeholder="新增步骤…" Variant="Variant.Text"
+                                  Margin="Margin.Dense" Immediate="true" Class="flex-grow-1" OnKeyUp="OnStepKey" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="AddStep" />
+                </div>
+            }
+
+            @{
+                var warn = ConflictWarning();
+            }
+            @if (warn is not null)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">@warn</MudAlert>
+            }
+
+            <div class="d-flex justify-end mt-4" style="gap:8px;">
+                @if (_editingId is not null)
+                {
+                    <MudButton Color="Color.Error" Variant="Variant.Text" OnClick="DeleteEditingAsync" Class="mr-auto">删除规则</MudButton>
+                }
+                <MudButton OnClick="@(() => _modalVisible = false)">取消</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">保存</MudButton>
+            </div>
+        </MudPaper>
+    </div>
+}
+
+@code {
+    /// <summary>每小时像素高度，与 app.css 里 --hour-h 保持一致。</summary>
+    private const double HourHeight = 44;
+
+    private List<ScheduleRuleDto> _rules = new();
+    private TodayScheduleDto? _today;
+    private string? _error;
+
+    private ScheduleToday? _todayPanel;
+
+    // 网格可视范围（小时，24 表示当天结束）
+    private double _startHour = 6;
+    private double _endHour = 22;
+    private DayOfWeek? _todayDow;
+    private double? _nowTop;
+
+    // 弹窗状态
+    private bool _modalVisible;
+    private int? _editingId;
+    private string _mTitle = string.Empty;
+    private ScheduleRuleMode _mMode = ScheduleRuleMode.Pick;
+    private int _mDays;
+    private string _mStart = "09:00";
+    private string _mEnd = "10:00";
+    private string _mTags = string.Empty;
+    private bool _mActive = true;
+    private string _mStartDate = string.Empty;
+    private string _mEndDate = string.Empty;
+    private readonly List<string> _mSteps = new();
+    private string _mStepInput = string.Empty;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _rules = await ScheduleService.GetRulesAsync();
+            _today = await ScheduleService.GetTodayAsync();
+            BuildGridRange();
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    /// <summary>可视范围：默认 06:00–22:00，规则有更早/更晚的时段就撑开。</summary>
+    private void BuildGridRange()
+    {
+        var active = _rules.Where(r => r.IsActive).ToList();
+        var min = active.Count == 0 ? 8.0 : active.Min(r => HourOf(r.StartTime));
+        var max = active.Count == 0 ? 20.0 : active.Max(r => HourOf(r.EndTime));
+
+        _startHour = Math.Max(0, Math.Floor(Math.Min(min, 6)));
+        _endHour = Math.Min(24, Math.Ceiling(Math.Max(max, 22)));
+        if (_endHour - _startHour < 8) _endHour = Math.Min(24, _startHour + 8);
+
+        _todayDow = _today?.Date.DayOfWeek;
+        var nowMinutes = _today is null ? (double?)null : _today.NowTime.Hour * 60 + _today.NowTime.Minute;
+        _nowTop = nowMinutes is { } m && m / 60.0 >= _startHour && m / 60.0 <= _endHour ? Y(m) : null;
+    }
+
+    private double GridHeight => (_endHour - _startHour) * HourHeight;
+
+    private double Y(double minutes) => (minutes / 60.0 - _startHour) * HourHeight;
+
+    private static double HourOf(TimeOnly t) => t.Hour + t.Minute / 60.0;
+
+    private static double Minutes(TimeOnly t) => t.Hour * 60 + t.Minute;
+
+    private static double BlockHeight(RuleBlock b)
+        => Math.Max(20, (Minutes(b.End) - Minutes(b.Start)) / 60.0 * HourHeight - 3);
+
+    private static string HourLabel(double h) => $"{(int)h:00}:00";
+
+    private static string ModeClass(ScheduleRuleDto r)
+        => r.Mode == ScheduleRuleMode.Generate ? "week-block-mode-generate" : "week-block-mode-pick";
+
+    private static string DayName(int bitIndex) => bitIndex switch
+    {
+        0 => "周一", 1 => "周二", 2 => "周三", 3 => "周四", 4 => "周五", 5 => "周六", _ => "周日",
+    };
+
+    private string ModeHint => _mMode == ScheduleRuleMode.Pick
+        ? "挑选：到点从该标签的未完成任务里列出来让你选"
+        : "生成：自动新建一张任务卡，不用每天手建";
+
+    private string TagsHint => _mMode == ScheduleRuleMode.Pick
+        ? "必填：候选任务必须带这些标签之一，整标签精确匹配"
+        : "可选：新建的卡会打上这些标签；不填就不打标签";
+
+    // ---------- 网格里的色块 ----------
+
+    private sealed class RuleBlock
+    {
+        public ScheduleRuleDto Rule { get; init; } = new();
+        public TimeOnly Start { get; init; }
+        public TimeOnly End { get; init; }
+        public int Lane { get; set; }
+        public int Lanes { get; set; } = 1;
+    }
+
+    private List<RuleBlock> BlocksFor(DayOfWeek dow)
+    {
+        var list = _rules
+            .Where(r => ScheduleDays.Has(r.DaysOfWeek, dow))
+            .Select(r => new RuleBlock { Rule = r, Start = r.StartTime, End = r.EndTime })
+            .OrderBy(b => b.Start).ThenBy(b => b.End)
+            .ToList();
+
+        // 只有时间上互相重叠的才聚成一簇分列；不同时段的块保持满宽
+        var clusters = new List<List<RuleBlock>>();
+        foreach (var b in list)
+        {
+            var last = clusters.Count > 0 ? clusters[^1] : null;
+            if (last is not null && last.Any(x => x.End > b.Start)) last.Add(b);
+            else clusters.Add(new List<RuleBlock> { b });
+        }
+
+        foreach (var cluster in clusters)
+        {
+            var laneEnds = new List<TimeOnly>();
+            foreach (var b in cluster)
+            {
+                var lane = laneEnds.FindIndex(end => end <= b.Start);
+                if (lane < 0)
+                {
+                    laneEnds.Add(b.End);
+                    lane = laneEnds.Count - 1;
+                }
+                else
+                {
+                    laneEnds[lane] = b.End;
+                }
+                b.Lane = lane;
+            }
+            foreach (var b in cluster) b.Lanes = laneEnds.Count;
+        }
+
+        return list;
+    }
+
+    private void OnColumnClick(DayOfWeek dow, MouseEventArgs e)
+    {
+        var rawMinutes = _startHour * 60 + e.OffsetY / HourHeight * 60;
+        var snapped = Math.Clamp(Math.Floor(rawMinutes / 60) * 60, 0, 23 * 60);
+        var start = new TimeOnly((int)(snapped / 60), 0);
+        var end = start.Hour >= 23 ? new TimeOnly(23, 59) : start.Add(TimeSpan.FromHours(1));
+        OpenCreate(dow, start, end);
+    }
+
+    // ---------- 规则弹窗 ----------
+
+    private void ToggleDay(int bit) => _mDays ^= bit;
+
+    private void OpenCreate(DayOfWeek? day, TimeOnly? start, TimeOnly? end)
+    {
+        _editingId = null;
+        _mTitle = string.Empty;
+        _mMode = ScheduleRuleMode.Pick;
+        _mDays = day is { } d ? ScheduleDays.Bit(d) : 0b001_1111;
+        _mStart = (start ?? new TimeOnly(9, 0)).ToString("HH\\:mm");
+        _mEnd = (end ?? new TimeOnly(10, 0)).ToString("HH\\:mm");
+        _mTags = string.Empty;
+        _mActive = true;
+        _mStartDate = string.Empty;
+        _mEndDate = string.Empty;
+        _mSteps.Clear();
+        _mStepInput = string.Empty;
+        _modalVisible = true;
+    }
+
+    private void OpenEdit(ScheduleRuleDto rule)
+    {
+        _editingId = rule.Id;
+        _mTitle = rule.Title;
+        _mMode = rule.Mode;
+        _mDays = rule.DaysOfWeek;
+        _mStart = rule.StartTime.ToString("HH\\:mm");
+        _mEnd = rule.EndTime.ToString("HH\\:mm");
+        _mTags = rule.Tags ?? string.Empty;
+        _mActive = rule.IsActive;
+        _mStartDate = rule.StartDate?.ToString("yyyy-MM-dd") ?? string.Empty;
+        _mEndDate = rule.EndDate?.ToString("yyyy-MM-dd") ?? string.Empty;
+        _mSteps.Clear();
+        _mSteps.AddRange(rule.Steps.OrderBy(s => s.SortOrder).Select(s => s.Title));
+        _mStepInput = string.Empty;
+        _modalVisible = true;
+    }
+
+    private void AddStep()
+    {
+        var title = _mStepInput.Trim();
+        if (title.Length == 0) return;
+        _mSteps.Add(title);
+        _mStepInput = string.Empty;
+    }
+
+    private void OnStepKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") AddStep();
+    }
+
+    /// <summary>时段重叠只警告（允许保存）。</summary>
+    private string? ConflictWarning()
+    {
+        if (_mDays == 0) return null;
+        if (!TimeOnly.TryParse(_mStart, out var start) || !TimeOnly.TryParse(_mEnd, out var end)) return null;
+        if (end <= start) return null;
+
+        var clash = _rules
+            .Where(r => r.Id != (_editingId ?? 0) && r.IsActive
+                && (r.DaysOfWeek & _mDays) != 0
+                && start < r.EndTime && r.StartTime < end)
+            .Select(r => r.Title)
+            .ToList();
+
+        return clash.Count == 0 ? null : $"与「{string.Join("」「", clash)}」时段重叠，仍可保存。";
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_mTitle)) { _error = "名称不能为空"; return; }
+        if (_mDays == 0) { _error = "至少要选择一天"; return; }
+        if (!TimeOnly.TryParse(_mStart, out var start) || !TimeOnly.TryParse(_mEnd, out var end))
+        {
+            _error = "时间格式不正确";
+            return;
+        }
+        if (end <= start) { _error = "结束时间必须晚于开始时间"; return; }
+        if (_mMode == ScheduleRuleMode.Pick && string.IsNullOrWhiteSpace(_mTags))
+        {
+            _error = "挑选模式必须至少设置一个标签";
+            return;
+        }
+
+        DateOnly? startDate = DateOnly.TryParse(_mStartDate, out var sd) ? sd : null;
+        DateOnly? endDate = DateOnly.TryParse(_mEndDate, out var ed) ? ed : null;
+        if (startDate is { } a && endDate is { } b && b < a) { _error = "生效截止不能早于起始"; return; }
+
+        var request = new SaveScheduleRuleRequest
+        {
+            Title = _mTitle.Trim(),
+            Mode = _mMode,
+            DaysOfWeek = _mDays,
+            StartTime = start,
+            EndTime = end,
+            Tags = string.IsNullOrWhiteSpace(_mTags) ? null : _mTags,
+            IsActive = _mActive,
+            StartDate = startDate,
+            EndDate = endDate,
+            Steps = _mMode == ScheduleRuleMode.Generate ? _mSteps.ToList() : new List<string>(),
+        };
+
+        try
+        {
+            if (_editingId is { } id) await ScheduleService.UpdateRuleAsync(id, request);
+            else await ScheduleService.CreateRuleAsync(request);
+            _modalVisible = false;
+            await LoadAsync();
+            if (_todayPanel is not null) await _todayPanel.RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task DeleteEditingAsync()
+    {
+        if (_editingId is not { } id) return;
+        try
+        {
+            await ScheduleService.DeleteRuleAsync(id);
+            _modalVisible = false;
+            await LoadAsync();
+            if (_todayPanel is not null) await _todayPanel.RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

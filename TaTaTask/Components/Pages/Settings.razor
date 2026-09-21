@@ -15,6 +15,9 @@
 
 <PageTitle>设置</PageTitle>
 
+@* 弹出层宿主：本页有 MudSelect（时区），必须在本页（交互孤岛）内声明 *@
+<MudPopoverProvider />
+
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
     <MudPaper Elevation="3" Class="pa-8">
         <MudText Typo="Typo.h5" Class="mb-6">用户设置</MudText>
@@ -57,6 +60,14 @@
                              Class="mb-3" Variant="Variant.Outlined"
                              HelperText="新建任务时点击添加截止时间，默认向后推几天" />
 
+            <MudSelect T="string" @bind-Value="_model.TimeZoneId" Label="时区" Class="mb-3" Variant="Variant.Outlined"
+                       HelperText="「今天」「本周」、日程时段等所有日历口径都按此时区计算">
+                @foreach (var (id, label) in UserTime.CommonTimeZones)
+                {
+                    <MudSelectItem T="string" Value="@id">@label</MudSelectItem>
+                }
+            </MudSelect>
+
             <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="mt-4">保存设置</MudButton>
         </EditForm>
 
@@ -88,6 +99,7 @@
             Username = user.Username,
             DefaultDueWarningHours = user.DefaultDueWarningHours,
             DefaultDueDays = user.DefaultDueDays,
+            TimeZoneId = user.TimeZoneId,
         };
     }
 
@@ -133,6 +145,16 @@
             user.PasswordHash = Hasher.Hash(_model.NewPassword);
         }
 
+        if (!string.IsNullOrWhiteSpace(_model.TimeZoneId))
+        {
+            if (!UserTime.IsValid(_model.TimeZoneId))
+            {
+                _error = "无效的时区";
+                return;
+            }
+            user.TimeZoneId = _model.TimeZoneId;
+        }
+
         user.DefaultDueWarningHours = _model.DefaultDueWarningHours;
         user.DefaultDueDays = _model.DefaultDueDays;
 
@@ -152,5 +174,6 @@
         public string ConfirmNewPassword { get; set; } = string.Empty;
         public int DefaultDueWarningHours { get; set; } = 48;
         public int DefaultDueDays { get; set; } = 3;
+        public string TimeZoneId { get; set; } = UserTime.DefaultTimeZoneId;
     }
 }

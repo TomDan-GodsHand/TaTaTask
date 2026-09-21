@@ -63,7 +63,7 @@
                     <TitleContent>
                         <div>
                             <MudText Typo="Typo.body1"><b>@item.Title</b></MudText>
-                            <MudText Typo="Typo.caption" Style="opacity:0.6;">@item.Username · @item.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudText>
+                            <MudText Typo="Typo.caption" Style="opacity:0.6;">@item.Username · @item.CreatedAt.ToString("yyyy-MM-dd HH:mm")</MudText>
                         </div>
                     </TitleContent>
                     <ChildContent>
@@ -77,7 +77,7 @@
                             {
                                 <MudPaper Elevation="0" Class="pa-3 mb-2" Style="background-color:#f0f7f4;">
                                     <MudText Typo="Typo.body2" Style="white-space:pre-wrap;">@reply.Content</MudText>
-                                    <MudText Typo="Typo.caption" Style="opacity:0.5;">管理员 · @reply.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudText>
+                                    <MudText Typo="Typo.caption" Style="opacity:0.5;">管理员 · @reply.CreatedAt.ToString("yyyy-MM-dd HH:mm")</MudText>
                                 </MudPaper>
                             }
                         }

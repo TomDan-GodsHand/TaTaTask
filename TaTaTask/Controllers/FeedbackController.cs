@@ -24,26 +24,31 @@ public class FeedbackController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<FeedbackItemDto>>> GetAll()
     {
-        var items = await _db.FeedbackItems
+        var tz = UserTime.Resolve(_current.UserId is { } uid
+            ? await _db.Users.Where(u => u.Id == uid).Select(u => u.TimeZoneId).FirstOrDefaultAsync()
+            : null);
+
+        var rows = await _db.FeedbackItems
+            .Include(f => f.User)
+            .Include(f => f.Replies).ThenInclude(r => r.User)
             .OrderByDescending(f => f.CreatedAt)
-            .Select(f => new FeedbackItemDto
-            {
-                Id = f.Id,
-                Title = f.Title,
-                Content = f.Content,
-                Username = f.User != null ? f.User.Username : "未知用户",
-                CreatedAt = f.CreatedAt,
-                Replies = f.Replies.OrderBy(r => r.CreatedAt).Select(r => new FeedbackReplyDto
-                {
-                    Id = r.Id,
-                    Content = r.Content,
-                    Username = r.User != null ? r.User.Username : "未知用户",
-                    CreatedAt = r.CreatedAt,
-                }).ToList(),
-            })
             .ToListAsync();
 
-        return items;
+        return rows.Select(f => new FeedbackItemDto
+        {
+            Id = f.Id,
+            Title = f.Title,
+            Content = f.Content,
+            Username = f.User != null ? f.User.Username : "未知用户",
+            CreatedAt = UserTime.ToUser(f.CreatedAt, tz),
+            Replies = f.Replies.OrderBy(r => r.CreatedAt).Select(r => new FeedbackReplyDto
+            {
+                Id = r.Id,
+                Content = r.Content,
+                Username = r.User != null ? r.User.Username : "未知用户",
+                CreatedAt = UserTime.ToUser(r.CreatedAt, tz),
+            }).ToList(),
+        }).ToList();
     }
 
     [HttpPost]
@@ -70,7 +75,7 @@ public class FeedbackController : ControllerBase
             Title = item.Title,
             Content = item.Content,
             Username = _current.Username ?? "未知用户",
-            CreatedAt = item.CreatedAt,
+            CreatedAt = UserTime.ToUser(item.CreatedAt, await TzAsync()),
         };
     }
 
@@ -104,7 +109,15 @@ public class FeedbackController : ControllerBase
             Id = reply.Id,
             Content = reply.Content,
             Username = _current.Username ?? "未知用户",
-            CreatedAt = reply.CreatedAt,
+            CreatedAt = UserTime.ToUser(reply.CreatedAt, await TzAsync()),
         };
+    }
+
+    private async Task<TimeZoneInfo> TzAsync()
+    {
+        var id = _current.UserId is { } uid
+            ? await _db.Users.Where(u => u.Id == uid).Select(u => u.TimeZoneId).FirstOrDefaultAsync()
+            : null;
+        return UserTime.Resolve(id);
     }
 }

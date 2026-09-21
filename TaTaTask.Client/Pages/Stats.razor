@@ -7,6 +7,7 @@
 @using TaTaTask.Models.Dtos
 @attribute [Authorize]
 @inject ITodoService TodoService
+@inject IScheduleService ScheduleService
 @inject NavigationManager Nav
 
 <PageTitle>数据统计</PageTitle>
@@ -228,10 +229,158 @@
             </div>
         }
     </div>
+
+    @* ==================== 日程执行（并入本页，不新开页面） ==================== *@
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6" Class="mb-3">
+        <MudIcon Icon="@Icons.Material.Filled.Today" Size="Size.Small" Class="mr-1" /> 日程执行
+    </MudText>
+
+    @if (!_schedule.HasData)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3">
+            还没有日程记录。去「日程」页加一条周规则后，这里会显示执行率、全勤天数与哪条规则排得不合理。
+        </MudAlert>
+    }
+    else
+    {
+        <div class="stats-cards">
+            <MudPaper Class="stats-card" Elevation="2">
+                <MudText Typo="Typo.caption" Style="opacity:.7;">今日完成</MudText>
+                @if (_schedule.TodayPlanned == 0)
+                {
+                    <MudText Typo="Typo.h4" Style="opacity:.35;"><b>—</b></MudText>
+                    <div class="stats-card-sub">今天没有安排</div>
+                }
+                else
+                {
+                    <MudText Typo="Typo.h4" Color="@(_schedule.TodayRate >= 100 ? Color.Success : Color.Primary)">
+                        <b>@_schedule.TodayDone/@_schedule.TodayPlanned</b>
+                    </MudText>
+                    <div class="stats-card-sub">完成率 @_schedule.TodayRate%</div>
+                }
+            </MudPaper>
+
+            <MudPaper Class="stats-card" Elevation="2">
+                <MudText Typo="Typo.caption" Style="opacity:.7;">近30天完成率</MudText>
+                @if (_schedule.Last30Planned == 0)
+                {
+                    <MudText Typo="Typo.h4" Style="opacity:.35;"><b>—</b></MudText>
+                    <div class="stats-card-sub">暂无样本</div>
+                }
+                else
+                {
+                    <MudText Typo="Typo.h4" Color="@(_schedule.Last30Rate >= 80 ? Color.Success : Color.Warning)">
+                        <b>@_schedule.Last30Rate%</b>
+                    </MudText>
+                    <div class="stats-card-sub @ScheduleDeltaClass()">@ScheduleDelta()</div>
+                }
+            </MudPaper>
+
+            <MudPaper Class="stats-card" Elevation="2">
+                <MudText Typo="Typo.caption" Style="opacity:.7;">连续全勤</MudText>
+                <MudText Typo="Typo.h4" Color="@(_schedule.StreakDays > 0 ? Color.Success : Color.Default)">
+                    <b>@_schedule.StreakDays 天</b>
+                </MudText>
+                <div class="stats-card-sub">有安排且全部完成；没安排的日子不算断</div>
+            </MudPaper>
+
+            <MudPaper Class="stats-card" Elevation="2">
+                <MudText Typo="Typo.caption" Style="opacity:.7;">日均排期</MudText>
+                @if (_schedule.AvgDailyMinutes == 0)
+                {
+                    <MudText Typo="Typo.h4" Style="opacity:.35;"><b>—</b></MudText>
+                    <div class="stats-card-sub">暂无样本</div>
+                }
+                else
+                {
+                    <MudText Typo="Typo.h4" Color="Color.Primary">
+                        <b>@((_schedule.AvgDailyMinutes / 60.0).ToString("0.#")) 小时</b>
+                    </MudText>
+                    <div class="stats-card-sub">近30天，按有安排的天数平均</div>
+                }
+            </MudPaper>
+        </div>
+
+        <div class="stats-panels">
+            <div class="stats-panel">
+                <div class="d-flex align-center mb-3" style="gap:12px;">
+                    <MudText Typo="Typo.subtitle1">
+                        <MudIcon Icon="@Icons.Material.Filled.EventAvailable" Size="Size.Small" Class="mr-1" /> 近8周 排定 vs 完成
+                    </MudText>
+                    <span class="legend-item"><span class="legend-dot legend-dot-created"></span>排定</span>
+                    <span class="legend-item"><span class="legend-dot legend-dot-done"></span>完成</span>
+                </div>
+                @{
+                    var execMax = Math.Max(1, _schedule.WeeklyExecution.Count > 0
+                        ? _schedule.WeeklyExecution.Max(w => Math.Max(w.Planned, w.Done)) : 1);
+                }
+                <div class="flow-rows">
+                    @foreach (var w in _schedule.WeeklyExecution)
+                    {
+                        <div class="flow-row">
+                            <div class="flow-week @(w.IsCurrent ? "flow-week-current" : "")">
+                                @(w.IsCurrent ? "本周" : w.WeekLabel)
+                            </div>
+                            <div class="flow-bars">
+                                <div class="flow-track"><div class="flow-bar flow-bar-created" style="width:@((int)(w.Planned * 100.0 / execMax))%"></div></div>
+                                <div class="flow-track"><div class="flow-bar flow-bar-done" style="width:@((int)(w.Done * 100.0 / execMax))%"></div></div>
+                            </div>
+                            <div class="flow-nums">
+                                <span class="flow-num flow-num-created">@w.Planned</span>
+                                <span class="flow-num flow-num-done">@w.Done</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="stats-panel">
+                <MudText Typo="Typo.subtitle1" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Rule" Size="Size.Small" Class="mr-1" /> 规则执行榜（近30天）
+                </MudText>
+                @if (_schedule.Rules.Count == 0)
+                {
+                    <div class="empty-hint">近 30 天没有规则排期记录</div>
+                }
+                else
+                {
+                    @foreach (var r in _schedule.Rules)
+                    {
+                        <div class="d-flex align-center mb-2" style="gap:8px;">
+                            <MudText Typo="Typo.body2" title="@r.TimeLabel"
+                                     Style="flex:1; min-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@r.Title</MudText>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@r.ModeLabel</MudChip>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="min-width:88px;">@r.TimeLabel</MudText>
+                            <div style="width:110px; height:6px; border-radius:3px; background:var(--mud-palette-action-disabled-background); overflow:hidden;">
+                                <div style="height:100%; width:@(r.Rate)%; background:var(--mud-palette-primary);"></div>
+                            </div>
+                            <MudText Typo="Typo.caption" Style="min-width:78px; text-align:right;">
+                                @RateText(r)
+                            </MudText>
+                        </div>
+                        @if (r.Planned > 0 && r.Skipped > 0)
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="margin-left:4px;">（其中跳过 @r.Skipped 次）</MudText>
+                        }
+                    }
+                }
+            </div>
+        </div>
+
+        @if (_schedule.Insight is not null)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3" Icon="@Icons.Material.Filled.Lightbulb">
+                @_schedule.Insight
+            </MudAlert>
+        }
+    }
 </div>
 
 @code {
     private DashboardStatsDto _stats = new();
+    private ScheduleStatsDto _schedule = new();
     private bool _loading;
     private string? _error;
     private HubConnection? _hub;
@@ -242,6 +391,7 @@
         try
         {
             _stats = await TodoService.GetStatsAsync();
+            _schedule = await ScheduleService.GetStatsAsync();
         }
         catch (Exception ex)
         {
@@ -265,6 +415,7 @@
                 _hub.On("Refresh", async () =>
                 {
                     _stats = await TodoService.GetStatsAsync();
+                    _schedule = await ScheduleService.GetStatsAsync();
                     await InvokeAsync(StateHasChanged);
                 });
                 await _hub.StartAsync();
@@ -301,4 +452,21 @@
         if (days < 1) return "<1 天";
         return $"{days:0.#} 天";
     }
+
+    private string ScheduleDelta() => _schedule.Last30Delta switch
+    {
+        > 0 => $"较上一个30天 +{_schedule.Last30Delta} 个百分点",
+        < 0 => $"较上一个30天 {_schedule.Last30Delta} 个百分点",
+        _ => "与上一个30天持平",
+    };
+
+    private string ScheduleDeltaClass() => _schedule.Last30Delta switch
+    {
+        > 0 => "delta-up",
+        < 0 => "delta-down",
+        _ => "",
+    };
+
+    private static string RateText(RulePerformanceDto r)
+        => r.Planned > 0 ? $"{r.Done}/{r.Planned} · {r.Rate}%" : $"跳过 {r.Skipped} 次";
 }

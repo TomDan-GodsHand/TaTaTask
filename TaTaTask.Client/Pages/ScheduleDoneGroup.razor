@@ -1,0 +1,86 @@
+@using TaTaTask.Models.Dtos
+
+@* 「已完成」泳道里，日程生成的卡按来源规则折叠成一张组卡（§6.6） *@
+
+<div style="padding-bottom:10px;">
+
+    <MudPaper Elevation="1" Class="pa-2" Style="border-left:4px solid var(--mud-palette-primary); cursor:pointer;"
+              @onclick="OnToggle">
+        <div class="d-flex align-center" style="gap:6px;">
+            <MudIcon Icon="@Icons.Material.Filled.FolderSpecial" Size="Size.Small"
+                     Style="color:var(--mud-palette-primary);" />
+            <MudText Typo="Typo.body2" Style="font-weight:600; flex:1; min-width:60px;">@Title</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">×@Tasks.Count</MudChip>
+            <MudIcon Icon="@(Expanded ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                     Size="Size.Small" />
+        </div>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary mt-1">@RecentLabel()</MudText>
+    </MudPaper>
+
+    @* 纸边：做出「一叠纸」的层次感，一眼看出它代表多张卡 *@
+    <div style="height:3px; margin:0 6px; border-radius:0 0 4px 4px; background:var(--mud-palette-action-default-hover);"></div>
+    <div style="height:3px; margin:0 12px; border-radius:0 0 4px 4px; background:var(--mud-palette-action-disabled-background);"></div>
+
+    @if (Expanded)
+    {
+        <div class="mt-2">
+            @foreach (var task in Tasks.OrderByDescending(t => t.DoneAt ?? t.UpdatedAt).Take(10))
+            {
+                <div class="d-flex align-center" style="gap:4px; padding:2px 4px; border-top:1px solid var(--mud-palette-divider);">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="min-width:72px;">
+                        @((task.DoneAt ?? task.UpdatedAt).ToString("MM/dd HH:mm"))
+                    </MudText>
+                    <MudText Typo="Typo.caption"
+                             Style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@task.Title</MudText>
+                    @if (OnArchive.HasDelegate)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Archive" Size="Size.Small" title="归档"
+                                       OnClick="@(() => OnArchive.InvokeAsync(task))" />
+                    }
+                    @if (OnDelete.HasDelegate)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       title="删除" OnClick="@(() => OnDelete.InvokeAsync(task))" />
+                    }
+                </div>
+            }
+            @if (Tasks.Count > 10)
+            {
+                <MudText Typo="Typo.caption" Class="mt-1">
+                    <a href="@ArchiveHref()">还有 @(Tasks.Count - 10) 条更早的，去归档页看这条规则的全部记录 →</a>
+                </MudText>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>规则名，作为「文件夹」的名字。</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>来源规则 Id，用于「查看全部」跳到归档页做规则筛选。</summary>
+    [Parameter] public int RuleId { get; set; }
+
+    [Parameter, EditorRequired] public List<TodoItemDto> Tasks { get; set; } = new();
+
+    [Parameter] public bool Expanded { get; set; }
+
+    [Parameter] public EventCallback OnToggle { get; set; }
+
+    [Parameter] public EventCallback<TodoItemDto> OnArchive { get; set; }
+
+    [Parameter] public EventCallback<TodoItemDto> OnDelete { get; set; }
+
+    private string RecentLabel()
+    {
+        var dates = Tasks
+            .Select(t => t.DoneAt ?? t.UpdatedAt)
+            .OrderByDescending(d => d)
+            .Take(3)
+            .Select(d => d.ToString("MM/dd"));
+
+        return $"最近 {string.Join(" · ", dates)}";
+    }
+
+    private string ArchiveHref() => $"archive?rule={RuleId}";
+}
