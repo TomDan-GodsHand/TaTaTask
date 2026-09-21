@@ -365,62 +365,124 @@ public class ServerTodoService : ITodoService
         var now = DateTime.UtcNow;
         var today = now.Date;
 
+        // 周一为一周开始
+        var daysSinceMonday = ((int)today.DayOfWeek + 6) % 7;
+        var thisMonday = today.AddDays(-daysSinceMonday);
+        var lastMonday = thisMonday.AddDays(-7);
+        var flowCutoff = thisMonday.AddDays(-7 * 7); // 覆盖近8周
+        var cutoff30 = today.AddDays(-30);
+
+        // 一次查询拿流量窗口内的任务（含已归档任务的完成记录）
+        var flowItems = await _db.TodoItems
+            .Where(t => t.UserId == Uid
+                && (t.CreatedAt >= flowCutoff || t.DoneAt >= flowCutoff))
+            .Select(t => new { t.CreatedAt, t.DoneAt, t.DueDate })
+            .ToListAsync();
+
         var activeItems = await _db.TodoItems
-            .Include(t => t.Steps)
             .Where(t => t.UserId == Uid && !t.IsArchived
                 && t.Status != TodoStatus.Done && t.Status != TodoStatus.Frozen)
+            .Select(t => new { t.Id, t.Title, t.Priority, t.Tags, t.DueDate, t.CreatedAt })
             .ToListAsync();
 
-        var doneToday = await _db.TodoItems
-            .CountAsync(t => t.UserId == Uid && t.DoneAt >= today);
+        var dto = new DashboardStatsDto();
 
-        var frozenItems = await _db.TodoItems
-            .Where(t => t.UserId == Uid && !t.IsArchived && t.Status == TodoStatus.Frozen
-                && t.FrozeAt != null)
-            .OrderByDescending(t => t.FrozeAt)
-            .ToListAsync();
-
-        var overdueCount = await _db.TodoItems
-            .CountAsync(t => t.UserId == Uid && !t.IsArchived
-                && t.Status != TodoStatus.Done && t.Status != TodoStatus.Frozen
-                && t.DueDate < now);
-
-        var totalSteps = activeItems.Sum(t => t.Steps.Count);
-        var completedSteps = activeItems.Sum(t => t.Steps.Count(s => s.IsCompleted));
-
-        var frozenList = frozenItems.Select(t => new FrozenItemDto
+        // --- 周流量（近8周） ---
+        for (int i = 7; i >= 0; i--)
         {
-            Id = t.Id,
-            Title = t.Title,
-            DaysFrozen = (int)((now - t.FrozeAt!.Value).TotalDays),
-            FrozenReason = t.FrozenReason,
-        }).ToList();
-
-        var daily = new List<DailyDoneDto>();
-        for (int i = 6; i >= 0; i--)
-        {
-            var day = today.AddDays(-i);
-            var next = day.AddDays(1);
-            var count = await _db.TodoItems
-                .CountAsync(t => t.UserId == Uid && t.DoneAt >= day && t.DoneAt < next);
-            daily.Add(new DailyDoneDto
+            var weekStart = thisMonday.AddDays(-7 * i);
+            var weekEnd = weekStart.AddDays(7);
+            dto.WeeklyFlow.Add(new WeeklyFlowDto
             {
-                Date = day.ToString("MM/dd"),
-                Count = count,
+                WeekLabel = weekStart.ToString("MM/dd"),
+                IsCurrent = i == 0,
+                Created = flowItems.Count(t => t.CreatedAt >= weekStart && t.CreatedAt < weekEnd),
+                Done = flowItems.Count(t => t.DoneAt != null && t.DoneAt >= weekStart && t.DoneAt < weekEnd),
             });
         }
 
-        return new DashboardStatsDto
+        // --- 吞吐回顾 ---
+        dto.DoneThisWeek = flowItems.Count(t => t.DoneAt != null && t.DoneAt >= thisMonday);
+        dto.DoneLastWeek = flowItems.Count(t => t.DoneAt != null && t.DoneAt >= lastMonday && t.DoneAt < thisMonday);
+
+        var doneRecent = flowItems
+            .Where(t => t.DoneAt != null && t.DoneAt >= cutoff30)
+            .Select(t => new { Done = t.DoneAt!.Value, t.CreatedAt, t.DueDate })
+            .ToList();
+
+        dto.DoneLast30 = doneRecent.Count;
+        if (doneRecent.Count > 0)
         {
-            ActiveCount = activeItems.Count,
-            DoneTodayCount = doneToday,
-            FrozenCount = frozenItems.Count,
-            OverdueCount = overdueCount,
-            TotalStepsActive = totalSteps,
-            CompletedStepsActive = completedSteps,
-            FrozenItems = frozenList,
-            DailyDone = daily,
-        };
+            dto.AvgCycleDays = Math.Round(doneRecent.Average(t => (t.Done - t.CreatedAt).TotalDays), 1);
+        }
+
+        var doneWithDue = doneRecent.Where(t => t.DueDate != null).ToList();
+        if (doneWithDue.Count > 0)
+        {
+            var onTime = doneWithDue.Count(t => t.Done <= t.DueDate!.Value);
+            var overdueDone = doneWithDue.Where(t => t.Done > t.DueDate!.Value).ToList();
+            dto.OnTimeDoneCount = onTime;
+            dto.OverdueDoneCount = overdueDone.Count;
+            if (overdueDone.Count > 0)
+            {
+                dto.AvgOverdueDays = Math.Round(overdueDone.Average(t => (t.Done - t.DueDate!.Value).TotalDays), 1);
+            }
+        }
+
+        // --- 当前逾期（活跃任务） ---
+        var overdue = activeItems
+            .Where(t => t.DueDate != null && t.DueDate < now)
+            .OrderBy(t => t.DueDate)
+            .ToList();
+
+        dto.OverdueCount = overdue.Count;
+        dto.OverdueItems = overdue.Select(t => new OverdueItemDto
+        {
+            Id = t.Id,
+            Title = t.Title,
+            DueDate = t.DueDate!.Value,
+            DaysOverdue = (int)Math.Floor((now - t.DueDate.Value).TotalDays),
+        }).ToList();
+
+        // --- 标签分布 ---
+        var tagCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in activeItems)
+        {
+            if (string.IsNullOrWhiteSpace(t.Tags)) continue;
+            foreach (var raw in t.Tags.Split(','))
+            {
+                var tag = raw.Trim();
+                if (tag.Length == 0) continue;
+                tagCounts[tag] = tagCounts.TryGetValue(tag, out var c) ? c + 1 : 1;
+            }
+        }
+        dto.TagCounts = tagCounts
+            .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+            .Take(8)
+            .Select(kv => new TagCountDto { Tag = kv.Key, Count = kv.Value })
+            .ToList();
+
+        // --- 优先级分布 ---
+        foreach (var t in activeItems)
+        {
+            var p = Math.Clamp(t.Priority, 0, 4);
+            dto.PriorityCounts[p]++;
+        }
+
+        // --- 老化任务（创建最久未完成） ---
+        dto.AgingItems = activeItems
+            .OrderBy(t => t.CreatedAt)
+            .Take(5)
+            .Select(t => new AgingItemDto
+            {
+                Id = t.Id,
+                Title = t.Title,
+                AgeDays = (int)Math.Floor((now - t.CreatedAt).TotalDays),
+            })
+            .ToList();
+
+        return dto;
     }
 
     private async Task AutoArchiveAsync()
