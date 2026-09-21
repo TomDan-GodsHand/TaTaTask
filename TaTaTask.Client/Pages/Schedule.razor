@@ -30,7 +30,7 @@
             </span>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
                        StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="@(() => OpenCreate(null, null, null))">新建规则</MudButton>
+                       OnClick="@(() => OpenCreate(null, null, null))">新建安排</MudButton>
         </div>
         <MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">点空白格新建 · 点色块编辑</MudText>
 
@@ -80,7 +80,9 @@
 
     @* ==================== 右：今日日程 ==================== *@
     <div class="schedule-today-col">
-        <ScheduleToday Compact="false" @ref="_todayPanel" />
+        <ScheduleToday Compact="false" @ref="_todayPanel"
+                       OnAddArrangement="OpenAddArrangement"
+                       OnEditArrangement="OpenEditArrangement" />
     </div>
 </div>
 
@@ -90,37 +92,58 @@
     <div style="position:fixed; inset:0; background-color:rgba(0,0,0,0.5); z-index:9990;"></div>
     <div style="position:fixed; inset:0; z-index:9991; display:flex; align-items:center; justify-content:center; padding:16px;">
         <MudPaper Class="pa-5" Elevation="8" Style="width:560px; max-width:100%; max-height:90vh; overflow-y:auto;">
-            <MudText Typo="Typo.h6" Class="mb-3">@(_editingId is null ? "新建规则" : "编辑规则")</MudText>
+            <MudText Typo="Typo.h6" Class="mb-3">@DialogTitle</MudText>
 
-            <MudTextField @bind-Value="_mTitle" Label="名称" Required="true" Immediate="true" Margin="Margin.Dense"
-                          HelperText="如「健身」「上午工作」" />
-
-            <MudSelect T="ScheduleRuleMode" @bind-Value="_mMode" Label="模式" Margin="Margin.Dense" Class="mt-2"
-                       HelperText="@ModeHint">
-                <MudSelectItem T="ScheduleRuleMode" Value="ScheduleRuleMode.Pick">挑选（从看板挑）</MudSelectItem>
-                <MudSelectItem T="ScheduleRuleMode" Value="ScheduleRuleMode.Generate">生成（自动建卡）</MudSelectItem>
-            </MudSelect>
-
-            <label class="mud-input-label mt-3" style="font-size:.75rem;">重复（一周中的哪几天）</label>
-            <div class="d-flex flex-wrap" style="gap:4px;">
-                @for (var i = 0; i < 7; i++)
-                {
-                    // 必须在循环内取副本：MudButton 的子内容是 RenderFragment（延迟执行），
-                    // 直接捕获 i 会拿到循环结束后的 7，导致七个按钮全渲染成「周日」
-                    var idx = i;
-                    var bit = 1 << i;
-                    var on = (_mDays & bit) != 0;
+            @if (_editingId is null && _editingEntryId is null)
+            {
+                <div class="d-flex mb-3" style="gap:6px;">
                     <MudButton Size="Size.Small"
-                               Variant="@(on ? Variant.Filled : Variant.Outlined)"
-                               Color="@(on ? Color.Primary : Color.Default)"
-                               OnClick="@(() => ToggleDay(bit))">@DayName(idx)</MudButton>
-                }
-            </div>
-            <div class="d-flex mt-1" style="gap:4px;">
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _mDays = 0b001_1111)">工作日</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _mDays = 0b110_0000)">周末</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _mDays = 0b111_1111)">每天</MudButton>
-            </div>
+                               Variant="@(_oneOff ? Variant.Outlined : Variant.Filled)"
+                               Color="@(_oneOff ? Color.Default : Color.Primary)"
+                               OnClick="@(() => _oneOff = false)">按周重复</MudButton>
+                    <MudButton Size="Size.Small"
+                               Variant="@(_oneOff ? Variant.Filled : Variant.Outlined)"
+                               Color="@(_oneOff ? Color.Primary : Color.Default)"
+                               OnClick="@(() => _oneOff = true)">只此一次</MudButton>
+                </div>
+            }
+
+            @if (_oneOff)
+            {
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">只作用于今天（@TodayLabel），不写进周规则。</MudText>
+            }
+            else
+            {
+                <MudTextField @bind-Value="_mTitle" Label="名称" Required="true" Immediate="true" Margin="Margin.Dense"
+                              HelperText="如「健身」「上午工作」" />
+
+                <MudSelect T="ScheduleRuleMode" @bind-Value="_mMode" Label="模式" Margin="Margin.Dense" Class="mt-2"
+                           HelperText="@ModeHint">
+                    <MudSelectItem T="ScheduleRuleMode" Value="ScheduleRuleMode.Pick">挑选（从看板挑）</MudSelectItem>
+                    <MudSelectItem T="ScheduleRuleMode" Value="ScheduleRuleMode.Generate">生成（自动建卡）</MudSelectItem>
+                </MudSelect>
+
+                <label class="mud-input-label mt-3" style="font-size:.75rem;">重复（一周中的哪几天）</label>
+                <div class="d-flex flex-wrap" style="gap:4px;">
+                    @for (var i = 0; i < 7; i++)
+                    {
+                        // 必须在循环内取副本：MudButton 的子内容是 RenderFragment（延迟执行），
+                        // 直接捕获 i 会拿到循环结束后的 7，导致七个按钮全渲染成「周日」
+                        var idx = i;
+                        var bit = 1 << i;
+                        var on = (_mDays & bit) != 0;
+                        <MudButton Size="Size.Small"
+                                   Variant="@(on ? Variant.Filled : Variant.Outlined)"
+                                   Color="@(on ? Color.Primary : Color.Default)"
+                                   OnClick="@(() => ToggleDay(bit))">@DayName(idx)</MudButton>
+                    }
+                </div>
+                <div class="d-flex mt-1" style="gap:4px;">
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _mDays = 0b001_1111)">工作日</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _mDays = 0b110_0000)">周末</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _mDays = 0b111_1111)">每天</MudButton>
+                </div>
+            }
 
             <div class="d-flex mt-3" style="gap:8px;">
                 <div style="flex:1;">
@@ -135,56 +158,67 @@
                 </div>
             </div>
 
-            <MudTextField @bind-Value="_mTags" Label="标签（逗号分隔）" Immediate="true" Margin="Margin.Dense" Class="mt-2"
-                          HelperText="@TagsHint" />
-
-            <div class="d-flex mt-2" style="gap:8px;">
-                <div style="flex:1;">
-                    <label class="mud-input-label" style="font-size:.75rem;">生效起始（可留空）</label>
-                    <input type="date" class="form-control" value="@_mStartDate"
-                           @onchange="@((ChangeEventArgs e) => _mStartDate = e.Value?.ToString() ?? string.Empty)" />
-                </div>
-                <div style="flex:1;">
-                    <label class="mud-input-label" style="font-size:.75rem;">生效截止（可留空）</label>
-                    <input type="date" class="form-control" value="@_mEndDate"
-                           @onchange="@((ChangeEventArgs e) => _mEndDate = e.Value?.ToString() ?? string.Empty)" />
-                </div>
-            </div>
-
-            <div class="d-flex align-center mt-2">
-                <MudSwitch T="bool" @bind-Value="_mActive" Color="Color.Primary" Label="启用" />
-            </div>
-
-            @if (_mMode == ScheduleRuleMode.Generate)
+            @if (_oneOff)
             {
-                <MudDivider Class="my-3" />
-                <MudText Typo="Typo.subtitle2" Class="mb-1">步骤模板</MudText>
-                <MudText Typo="Typo.caption" Class="mud-text-secondary">
-                    每天建卡时复制这些步骤，默认全部排进当天；可在今日日程里取消勾选。
-                </MudText>
-                @for (var i = 0; i < _mSteps.Count; i++)
+                <MudTextField @bind-Value="_mTags" Label="标签（可留空）" Immediate="true" Margin="Margin.Dense" Class="mt-2"
+                              HelperText="留空就从全部未完成任务里挑；填了就只列带这些标签的" />
+                <MudTextField @bind-Value="_mTitle" Label="事项标题（可留空）" Immediate="true" Margin="Margin.Dense" Class="mt-1"
+                              HelperText="填了会自动建一张看板卡并排上；留空则先落成「待选」，稍后在今日面板里挑" />
+            }
+            else
+            {
+                <MudTextField @bind-Value="_mTags" Label="标签（逗号分隔）" Immediate="true" Margin="Margin.Dense" Class="mt-2"
+                              HelperText="@TagsHint" />
+
+                <div class="d-flex mt-2" style="gap:8px;">
+                    <div style="flex:1;">
+                        <label class="mud-input-label" style="font-size:.75rem;">生效起始（可留空）</label>
+                        <input type="date" class="form-control" value="@_mStartDate"
+                               @onchange="@((ChangeEventArgs e) => _mStartDate = e.Value?.ToString() ?? string.Empty)" />
+                    </div>
+                    <div style="flex:1;">
+                        <label class="mud-input-label" style="font-size:.75rem;">生效截止（可留空）</label>
+                        <input type="date" class="form-control" value="@_mEndDate"
+                               @onchange="@((ChangeEventArgs e) => _mEndDate = e.Value?.ToString() ?? string.Empty)" />
+                    </div>
+                </div>
+
+                <div class="d-flex align-center mt-2">
+                    <MudSwitch T="bool" @bind-Value="_mActive" Color="Color.Primary" Label="启用" />
+                </div>
+
+                @if (_mMode == ScheduleRuleMode.Generate)
                 {
-                    var idx = i;
-                    <div class="d-flex align-center" style="gap:4px;">
-                        <MudText Typo="Typo.body2" Style="flex:1;">@_mSteps[idx]</MudText>
-                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
-                                       OnClick="@(() => _mSteps.RemoveAt(idx))" />
+                    <MudDivider Class="my-3" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">步骤模板</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        每天建卡时复制这些步骤，默认全部排进当天；可在今日日程里取消勾选。
+                    </MudText>
+                    @for (var i = 0; i < _mSteps.Count; i++)
+                    {
+                        var idx = i;
+                        <div class="d-flex align-center" style="gap:4px;">
+                            <MudText Typo="Typo.body2" Style="flex:1;">@_mSteps[idx]</MudText>
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                           OnClick="@(() => _mSteps.RemoveAt(idx))" />
+                        </div>
+                    }
+                    <div class="d-flex" style="gap:4px;">
+                        <MudTextField @bind-Value="_mStepInput" Placeholder="新增步骤…" Variant="Variant.Text"
+                                      Margin="Margin.Dense" Immediate="true" Class="flex-grow-1" OnKeyUp="OnStepKey" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary"
+                                       OnClick="AddStep" />
                     </div>
                 }
-                <div class="d-flex" style="gap:4px;">
-                    <MudTextField @bind-Value="_mStepInput" Placeholder="新增步骤…" Variant="Variant.Text"
-                                  Margin="Margin.Dense" Immediate="true" Class="flex-grow-1" OnKeyUp="OnStepKey" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary"
-                                   OnClick="AddStep" />
-                </div>
             }
 
-            @{
-                var warn = ConflictWarning();
-            }
-            @if (warn is not null)
+            @if (!_oneOff)
             {
-                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">@warn</MudAlert>
+                var warn = ConflictWarning();
+                if (warn is not null)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">@warn</MudAlert>
+                }
             }
 
             <div class="d-flex justify-end mt-4" style="gap:8px;">
@@ -217,6 +251,13 @@
 
     // 弹窗状态
     private bool _modalVisible;
+
+    /// <summary>弹窗当前是「只此一次」（临时安排）还是「按周重复」（规则）</summary>
+    private bool _oneOff;
+
+    /// <summary>正在编辑的临时安排（与 _editingId 互斥）</summary>
+    private int? _editingEntryId;
+
     private int? _editingId;
     private string _mTitle = string.Empty;
     private ScheduleRuleMode _mMode = ScheduleRuleMode.Pick;
@@ -287,6 +328,14 @@
     private string ModeHint => _mMode == ScheduleRuleMode.Pick
         ? "挑选：到点从该标签的未完成任务里列出来让你选"
         : "生成：自动新建一张任务卡，不用每天手建";
+
+    private string DialogTitle => _editingId is not null
+        ? "编辑规则"
+        : _editingEntryId is not null
+            ? "编辑临时安排"
+            : (_oneOff ? "加临时安排" : "新建周规则");
+
+    private string TodayLabel => _today is null ? "今天" : _today.Date.ToString("MM/dd");
 
     private string TagsHint => _mMode == ScheduleRuleMode.Pick
         ? "必填：候选任务必须带这些标签之一，整标签精确匹配"
@@ -359,6 +408,7 @@
     private void OpenCreate(DayOfWeek? day, TimeOnly? start, TimeOnly? end)
     {
         _editingId = null;
+        _oneOff = false;
         _mTitle = string.Empty;
         _mMode = ScheduleRuleMode.Pick;
         _mDays = day is { } d ? ScheduleDays.Bit(d) : 0b001_1111;
@@ -376,6 +426,7 @@
     private void OpenEdit(ScheduleRuleDto rule)
     {
         _editingId = rule.Id;
+        _oneOff = false;
         _mTitle = rule.Title;
         _mMode = rule.Mode;
         _mDays = rule.DaysOfWeek;
@@ -389,6 +440,43 @@
         _mSteps.AddRange(rule.Steps.OrderBy(s => s.SortOrder).Select(s => s.Title));
         _mStepInput = string.Empty;
         _modalVisible = true;
+    }
+
+    /// <summary>加临时安排：只作用于今天，不写进周规则。</summary>
+    private void OpenCreateOneOff(TimeOnly? start = null, TimeOnly? end = null)
+    {
+        _editingId = null;
+        _editingEntryId = null;
+        _oneOff = true;
+        _mTitle = string.Empty;
+        _mTags = string.Empty;
+        _mStart = (start ?? new TimeOnly(12, 0)).ToString("HH\\:mm");
+        _mEnd = (end ?? new TimeOnly(13, 0)).ToString("HH\\:mm");
+        _modalVisible = true;
+    }
+
+    /// <summary>编辑已有的一条临时安排。</summary>
+    private void OpenEditArrangement(ScheduleEntryDto entry)
+    {
+        _editingId = null;
+        _editingEntryId = entry.Id;
+        _oneOff = true;
+        _mStart = entry.StartTime.ToString("HH\\:mm");
+        _mEnd = entry.EndTime.ToString("HH\\:mm");
+        _mTags = entry.Tags ?? string.Empty;
+        // 还没挑任务的（待选）标题留空；已排定的带出卡名，可改名
+        _mTitle = entry.TodoItemId is null ? string.Empty : entry.Title;
+        _modalVisible = true;
+    }
+
+    /// <summary>今日面板的「加临时安排」→ 默认落在下一个整点。</summary>
+    private void OpenAddArrangement()
+    {
+        var now = _today?.NowTime ?? TimeOnly.FromDateTime(DateTime.Now);
+        var start = new TimeOnly(now.Hour, 0).Add(TimeSpan.FromHours(1));
+        if (start.Hour >= 23) start = new TimeOnly(23, 0);
+        var end = start.Hour >= 23 ? new TimeOnly(23, 59) : start.Add(TimeSpan.FromHours(1));
+        OpenCreateOneOff(start, end);
     }
 
     private void AddStep()
@@ -424,6 +512,13 @@
     private async Task SaveAsync()
     {
         _error = null;
+
+        // 临时安排：只有时段（+ 可选标签/事项），不校验周几模式那一套
+        if (_oneOff && _editingId is null)
+        {
+            await SaveOneOffAsync(_editingEntryId);
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(_mTitle)) { _error = "名称不能为空"; return; }
         if (_mDays == 0) { _error = "至少要选择一天"; return; }
@@ -462,6 +557,38 @@
             if (_editingId is { } id) await ScheduleService.UpdateRuleAsync(id, request);
             else await ScheduleService.CreateRuleAsync(request);
             _modalVisible = false;
+            await LoadAsync();
+            if (_todayPanel is not null) await _todayPanel.RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task SaveOneOffAsync(int? entryId = null)
+    {
+        if (!TimeOnly.TryParse(_mStart, out var start) || !TimeOnly.TryParse(_mEnd, out var end))
+        {
+            _error = "时间格式不正确";
+            return;
+        }
+        if (end <= start) { _error = "结束时间必须晚于开始时间"; return; }
+
+        var request = new CreateManualEntryRequest
+        {
+            StartTime = start,
+            EndTime = end,
+            Tags = string.IsNullOrWhiteSpace(_mTags) ? null : _mTags,
+            Title = string.IsNullOrWhiteSpace(_mTitle) ? null : _mTitle,
+        };
+
+        try
+        {
+            if (entryId is { } id) await ScheduleService.UpdateManualEntryAsync(id, request);
+            else await ScheduleService.CreateManualEntryAsync(request);
+            _modalVisible = false;
+            _editingEntryId = null;
             await LoadAsync();
             if (_todayPanel is not null) await _todayPanel.RefreshAsync();
         }

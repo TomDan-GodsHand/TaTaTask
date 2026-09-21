@@ -67,6 +67,20 @@ public class ClientScheduleService : IScheduleService
         return resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<TodayScheduleDto>() : null;
     }
 
+    public async Task<TodayScheduleDto?> UpdateManualEntryAsync(int entryId, CreateManualEntryRequest request)
+    {
+        var resp = await _http.PutAsJsonAsync($"api/schedule/entries/{entryId}", request);
+        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException(await ReadErrorAsync(resp, "保存失败"));
+        return await resp.Content.ReadFromJsonAsync<TodayScheduleDto>();
+    }
+
+    public async Task<TodayScheduleDto?> DeleteManualEntryAsync(int entryId)
+    {
+        var resp = await _http.DeleteAsync($"api/schedule/entries/{entryId}");
+        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException(await ReadErrorAsync(resp, "删除失败"));
+        return await resp.Content.ReadFromJsonAsync<TodayScheduleDto>();
+    }
+
     public async Task<TodayScheduleDto?> CompleteEntryAsync(int entryId)
     {
         var resp = await _http.PostAsync($"api/schedule/entries/{entryId}/complete", null);

@@ -32,6 +32,12 @@ public interface IScheduleService
     /// <summary>手动加一条临时日程项（无规则，先落成「待选」，再用候选池挑任务）。</summary>
     Task<TodayScheduleDto?> CreateManualEntryAsync(CreateManualEntryRequest request);
 
+    /// <summary>编辑一条临时安排（时段/标签/事项标题）。</summary>
+    Task<TodayScheduleDto?> UpdateManualEntryAsync(int entryId, CreateManualEntryRequest request);
+
+    /// <summary>删除一条临时安排；自动建的任务一并删除，从看板挑来的只解除关联。</summary>
+    Task<TodayScheduleDto?> DeleteManualEntryAsync(int entryId);
+
     /// <summary>跳过某条规则在今天（不产生任务）。</summary>
     Task<TodayScheduleDto?> SkipTodayAsync(int ruleId);
 

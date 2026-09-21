@@ -30,15 +30,11 @@
 }
 else
 {
-    @if (!Compact)
+    @if (!Compact && OnAddArrangement.HasDelegate)
     {
-        <div class="d-flex align-center mb-2" style="gap:6px; flex-wrap:wrap;">
-            <input type="time" class="form-control" style="max-width:110px;" value="@_mSlotStart"
-                   @onchange="@((ChangeEventArgs e) => _mSlotStart = e.Value?.ToString() ?? string.Empty)" />
-            <input type="time" class="form-control" style="max-width:110px;" value="@_mSlotEnd"
-                   @onchange="@((ChangeEventArgs e) => _mSlotEnd = e.Value?.ToString() ?? string.Empty)" />
+        <div class="d-flex justify-end mb-2">
             <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="AddManualEntryAsync">加临时安排</MudButton>
+                       OnClick="@(() => OnAddArrangement.InvokeAsync())">加临时安排</MudButton>
         </div>
     }
 
@@ -243,6 +239,26 @@ else
                             跳过今天
                         </MudButton>
                     }
+                    else if (e.TodoItemId is not null || e.State == ScheduleEntryState.Pending)
+                    {
+                        @* 临时安排：可编辑、可删除 *@
+                        <MudButton Size="Size.Small" Variant="Variant.Text"
+                                   OnClick="@(() => OnEditArrangement.InvokeAsync(e))">编辑安排</MudButton>
+                        @if (_confirmDeleteEntryId == e.Id)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error"
+                                       OnClick="@(() => DeleteArrangementAsync(e.Id))">
+                                确认删除@(e.TaskCreatedHere ? "（卡一起删）" : "（卡留在看板）")
+                            </MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text"
+                                       OnClick="@(() => _confirmDeleteEntryId = null)">取消</MudButton>
+                        }
+                        else
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                                       OnClick="@(() => _confirmDeleteEntryId = e.Id)">删除安排</MudButton>
+                        }
+                    }
                 </div>
 
                 @if (_stepEditorEntryId == e.Id)
@@ -284,6 +300,15 @@ else
 
     [Parameter] public EventCallback OnClose { get; set; }
 
+    /// <summary>「加临时安排」：由父页面打开统一的安排弹窗（抽屉模式下不显示该入口）。</summary>
+    [Parameter] public EventCallback OnAddArrangement { get; set; }
+
+    /// <summary>「编辑安排」：由父页面打开安排弹窗并预填该条。</summary>
+    [Parameter] public EventCallback<ScheduleEntryDto> OnEditArrangement { get; set; }
+
+    /// <summary>正在二次确认删除的临时安排</summary>
+    private int? _confirmDeleteEntryId;
+
     private TodayScheduleDto? _today;
     private string? _error;
 
@@ -303,32 +328,6 @@ else
     {
         await ReloadAsync();
         StateHasChanged();
-    }
-
-    // ---------- 手动临时安排 ----------
-
-    private string _mSlotStart = "12:00";
-    private string _mSlotEnd = "13:00";
-
-    private async Task AddManualEntryAsync()
-    {
-        _error = null;
-        if (!TimeOnly.TryParse(_mSlotStart, out var start) || !TimeOnly.TryParse(_mSlotEnd, out var end))
-        {
-            _error = "时间格式不正确";
-            return;
-        }
-        if (end <= start)
-        {
-            _error = "结束时间必须晚于开始时间";
-            return;
-        }
-
-        await ApplyAsync(() => ScheduleService.CreateManualEntryAsync(new CreateManualEntryRequest
-        {
-            StartTime = start,
-            EndTime = end,
-        }));
     }
 
     protected override async Task OnInitializedAsync()
@@ -416,6 +415,12 @@ else
 
     private Task DeleteTaskAsync(int entryId)
         => ApplyAsync(() => ScheduleService.DeleteEntryTaskAsync(entryId));
+
+    private async Task DeleteArrangementAsync(int entryId)
+    {
+        _confirmDeleteEntryId = null;
+        await ApplyAsync(() => ScheduleService.DeleteManualEntryAsync(entryId));
+    }
 
     // ---------- 待选：挑任务 + 选今日步骤 ----------
 

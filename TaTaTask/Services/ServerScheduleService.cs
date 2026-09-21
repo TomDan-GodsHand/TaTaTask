@@ -296,7 +296,9 @@ public class ServerScheduleService : IScheduleService
             .FirstOrDefaultAsync(e => e.Id == entryId && e.UserId == Uid);
         if (entry is null) return [];
 
+        // 规则的标签优先；临时安排没有规则，就用条目自己的标签
         var wanted = TagUtil.Split(entry.Rule?.Tags);
+        if (wanted.Length == 0) wanted = TagUtil.Split(entry.Tags);
 
         var tasks = await _db.TodoItems.Include(t => t.Steps)
             .Where(t => t.UserId == Uid && !t.IsArchived
@@ -353,6 +355,7 @@ public class ServerScheduleService : IScheduleService
         }
 
         var wanted = TagUtil.Split(entry.Rule?.Tags);
+        if (wanted.Length == 0) wanted = TagUtil.Split(entry.Tags);
         if (wanted.Length > 0 && !TagUtil.ContainsAny(task.Tags, wanted)) return null;
 
         entry.TodoItemId = task.Id;
@@ -515,18 +518,131 @@ public class ServerScheduleService : IScheduleService
         if (request.EndTime <= request.StartTime) return null;
 
         var now = DateTime.UtcNow;
-        _db.ScheduleEntries.Add(new ScheduleEntry
+        var entry = new ScheduleEntry
         {
             UserId = Uid,
             Date = today,
             RuleId = null,
             StartTime = request.StartTime,
             EndTime = request.EndTime,
-            State = ScheduleEntryState.Pending,
+            Tags = TagUtil.Normalize(request.Tags),
             CreatedAt = now,
             UpdatedAt = now,
-        });
+        };
 
+        if (!string.IsNullOrWhiteSpace(request.Title))
+        {
+            // 填了事项 → 直接建一张看板卡并排上（相当于「只此一次」的生成模式）
+            var maxSort = await _db.TodoItems
+                .Where(t => t.UserId == Uid && t.Status == TodoStatus.NotStarted)
+                .Select(t => (int?)t.SortOrder).MaxAsync() ?? 0;
+
+            var task = new TodoItem
+            {
+                UserId = Uid,
+                Title = request.Title.Trim(),
+                Tags = entry.Tags,
+                Status = TodoStatus.NotStarted,
+                SortOrder = maxSort + 1,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+
+            entry.TodoItem = task;
+            entry.TitleSnapshot = task.Title;
+            entry.TaskCreatedHere = true;
+            entry.State = ScheduleEntryState.Scheduled;
+        }
+        else
+        {
+            // 没填事项 → 落成「待选」，稍后在今日面板里挑一个
+            entry.State = ScheduleEntryState.Pending;
+        }
+
+        _db.ScheduleEntries.Add(entry);
+        await _db.SaveChangesAsync();
+        return await BuildTodayAsync(today, tz, tzId);
+    }
+
+    /// <summary>编辑一条临时安排（只允许今天的、且不属于任何规则的条目）。</summary>
+    public async Task<TodayScheduleDto?> UpdateManualEntryAsync(int entryId, CreateManualEntryRequest request)
+    {
+        var (tz, tzId) = await GetTzAsync();
+        var today = UserTime.Today(tz);
+        if (request.EndTime <= request.StartTime) return null;
+
+        var entry = await _db.ScheduleEntries
+            .Include(e => e.TodoItem).ThenInclude(t => t!.Steps)
+            .FirstOrDefaultAsync(e => e.Id == entryId && e.UserId == Uid);
+        if (entry is null || entry.RuleId is not null || entry.Date != today) return null;
+
+        var now = DateTime.UtcNow;
+        entry.StartTime = request.StartTime;
+        entry.EndTime = request.EndTime;
+        entry.Tags = TagUtil.Normalize(request.Tags);
+        entry.UpdatedAt = now;
+
+        var title = request.Title?.Trim();
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            if (entry.TodoItem is { } linked)
+            {
+                // 已经有卡了：改标题就是改这张卡
+                linked.Title = title;
+                linked.Tags = entry.Tags;
+                linked.UpdatedAt = now;
+                entry.TitleSnapshot = title;
+            }
+            else
+            {
+                // 原来只是「待选」，现在补了事项 → 建卡并排上
+                var maxSort = await _db.TodoItems
+                    .Where(t => t.UserId == Uid && t.Status == TodoStatus.NotStarted)
+                    .Select(t => (int?)t.SortOrder).MaxAsync() ?? 0;
+
+                var task = new TodoItem
+                {
+                    UserId = Uid,
+                    Title = title,
+                    Tags = entry.Tags,
+                    Status = TodoStatus.NotStarted,
+                    SortOrder = maxSort + 1,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                };
+
+                entry.TodoItem = task;
+                entry.TitleSnapshot = title;
+                entry.TaskCreatedHere = true;
+                entry.State = ScheduleEntryState.Scheduled;
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        return await BuildTodayAsync(today, tz, tzId);
+    }
+
+    /// <summary>
+    /// 删除一条临时安排。
+    /// 只删「本条安排自动建的」任务；从看板挑进来的只解除关联、卡片留在看板。
+    /// </summary>
+    public async Task<TodayScheduleDto?> DeleteManualEntryAsync(int entryId)
+    {
+        var (tz, tzId) = await GetTzAsync();
+        var today = UserTime.Today(tz);
+
+        var entry = await _db.ScheduleEntries
+            .Include(e => e.TodoItem)
+            .Include(e => e.Steps)
+            .FirstOrDefaultAsync(e => e.Id == entryId && e.UserId == Uid);
+        if (entry is null || entry.RuleId is not null || entry.Date != today) return null;
+
+        if (entry.TaskCreatedHere && entry.TodoItem is { } task)
+        {
+            _db.TodoItems.Remove(task);
+        }
+
+        _db.ScheduleEntries.Remove(entry);
         await _db.SaveChangesAsync();
         return await BuildTodayAsync(today, tz, tzId);
     }
@@ -878,13 +994,17 @@ public class ServerScheduleService : IScheduleService
         RuleTitle = e.Rule?.Title ?? (e.RuleId is null ? "临时安排" : "已删除的规则"),
         RuleMode = e.Rule?.Mode,
         TodoItemId = e.TodoItemId,
-        Title = e.TodoItem?.Title ?? e.TitleSnapshot ?? "（任务已删除）",
-        Tags = e.TodoItem?.Tags,
+        // 没有任务时不要显示「任务已删除」——待选就用规则名/临时安排占位
+        Title = e.TodoItem?.Title
+                ?? e.TitleSnapshot
+                ?? (e.Rule is not null ? e.Rule.Title : "临时安排"),
+        Tags = e.TodoItem?.Tags ?? e.Tags,
         TodoStatus = e.TodoItem?.Status,
         StartTime = e.StartTime,
         EndTime = e.EndTime,
         State = e.State,
         IsTaskDeleted = e.IsTaskDeleted,
+        TaskCreatedHere = e.TaskCreatedHere,
         CompletedAt = UserTime.ToUser(e.CompletedAt, tz),
         Steps = e.Steps.OrderBy(s => s.SortOrder).Select(s => new ScheduleEntryStepDto
         {

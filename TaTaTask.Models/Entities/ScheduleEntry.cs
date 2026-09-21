@@ -26,8 +26,20 @@ public class ScheduleEntry
     /// <summary>关联任务已被硬删除的留痕标记。</summary>
     public bool IsTaskDeleted { get; set; }
 
+    /// <summary>
+    /// 关联的任务是不是「本条安排自动建的」。
+    /// 决定删除安排时要不要连任务一起删：挑进来的看板任务只解除关联、留在看板。
+    /// </summary>
+    public bool TaskCreatedHere { get; set; }
+
     public TimeOnly StartTime { get; set; }
     public TimeOnly EndTime { get; set; }
+
+    /// <summary>
+    /// 临时安排自己的标签（来自规则的条目为空）。
+    /// 用途：没有规则时，「待选」的候选任务按它过滤；不设就从全池子里挑。
+    /// </summary>
+    public string? Tags { get; set; }
 
     public ScheduleEntryState State { get; set; } = ScheduleEntryState.Pending;
 

@@ -122,6 +122,8 @@ public class AppDbContext : DbContext
             // 每日物化幂等：同一用户、同一天、同一条规则只生成一条
             entity.HasIndex(e => new { e.UserId, e.Date, e.RuleId }).IsUnique();
 
+            entity.Property(e => e.Tags).HasMaxLength(500);
+
             entity.HasOne(e => e.User)
                 .WithMany()
                 .HasForeignKey(e => e.UserId)

@@ -66,6 +66,22 @@ public class ScheduleController : ControllerBase
         return dto is null ? BadRequest("结束时间必须晚于开始时间") : dto;
     }
 
+    /// <summary>编辑临时安排。</summary>
+    [HttpPut("entries/{id:int}")]
+    public async Task<ActionResult<TodayScheduleDto>> UpdateManualEntry(int id, CreateManualEntryRequest request)
+    {
+        var dto = await _service.UpdateManualEntryAsync(id, request);
+        return dto is null ? BadRequest("只能编辑今天的临时安排，且结束时间需晚于开始时间") : dto;
+    }
+
+    /// <summary>删除临时安排。</summary>
+    [HttpDelete("entries/{id:int}")]
+    public async Task<ActionResult<TodayScheduleDto>> DeleteManualEntry(int id)
+    {
+        var dto = await _service.DeleteManualEntryAsync(id);
+        return dto is null ? NotFound() : dto;
+    }
+
     [HttpGet("entries/{id:int}/candidates")]
     public async Task<ActionResult<List<ScheduleCandidateDto>>> GetCandidates(int id)
         => await _service.GetCandidatesAsync(id);

@@ -26,6 +26,9 @@ public class ScheduleEntryDto
     /// <summary>关联任务已被硬删除的留痕标记。</summary>
     public bool IsTaskDeleted { get; set; }
 
+    /// <summary>关联任务由本条安排自动创建（删除安排时可一并删除）。</summary>
+    public bool TaskCreatedHere { get; set; }
+
     public DateTime? CompletedAt { get; set; }
 
     /// <summary>今日排定的子步骤（按推进顺序）。</summary>

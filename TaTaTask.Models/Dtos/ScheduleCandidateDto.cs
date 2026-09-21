@@ -37,4 +37,10 @@ public class CreateManualEntryRequest
 {
     public TimeOnly StartTime { get; set; }
     public TimeOnly EndTime { get; set; }
+
+    /// <summary>可选的标签：落成「待选」时用它筛候选任务。</summary>
+    public string? Tags { get; set; }
+
+    /// <summary>可选的事项标题：填了就自动建一张看板卡并直接排上；不填则留作「待选」稍后挑。</summary>
+    public string? Title { get; set; }
 }
