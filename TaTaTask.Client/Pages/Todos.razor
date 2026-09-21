@@ -16,6 +16,7 @@
 
 <div class="board-page">
 
+@* 弹出层宿主：必须在本页（交互孤岛）内，布局里的那份对孤岛不可见 *@
 <MudPopoverProvider />
 
 @if (_error is not null)
@@ -27,6 +28,9 @@
 {
     <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
 }
+
+@* 到点提醒：当前时段到了就置顶提示 *@
+<ScheduleNowBanner OnOpen="@(() => _scheduleOpen = true)" />
 
 @{
     var dueSoon = DueSoon().ToList();
@@ -69,7 +73,7 @@
             </div>
 
             <div class="kanban-lane-cards">
-                @foreach (var task in Lane(status))
+                @foreach (var task in LaneCards(status))
                 {
                     <TodoCard Task="task"
                               Expanded="_expanded.Contains(task.Id)"
@@ -85,6 +89,19 @@
                               OnToggleStep="@(args => ToggleStep(args.Item1, args.Item2))"
                               OnAddStep="@(args => AddStep(args.Item1, args.Item2))"
                               OnDeleteStep="@(args => DeleteStep(args.Item1, args.Item2))" />
+                }
+
+                @* 已完成泳道：日程生成的卡按来源规则折叠成组 *@
+                @if (status == TodoStatus.Done)
+                {
+                    @foreach (var group in DoneGroups())
+                    {
+                        <ScheduleDoneGroup Title="@group.Title" Tasks="@group.Tasks" RuleId="@group.RuleId"
+                                           Expanded="_expandedGroups.Contains(group.RuleId)"
+                                           OnToggle="@(() => ToggleGroup(group.RuleId))"
+                                           OnArchive="ArchiveTask"
+                                           OnDelete="DeleteTask" />
+                    }
                 }
             </div>
         </div>
@@ -256,6 +273,24 @@
                    OnClick="@(() => OpenCreate(TodoStatus.NotStarted))" />
 </div>
 
+@* ==================== 右侧把手 + 今日日程抽屉 ==================== *@
+@* 抽屉与遮罩常驻 DOM，只切换 is-open —— 元素一增删 CSS 过渡就跑不起来 *@
+<div class="schedule-drawer-overlay @(_scheduleOpen ? "is-open" : "")" @onclick="CloseSchedule"></div>
+
+<div class="schedule-drawer @(_scheduleOpen ? "is-open" : "")" aria-hidden="@(!_scheduleOpen)">
+    @* 打开过一次之后才常驻内容：这样关闭时滑出动画里内容还在，
+       又不会让看板一加载就多拉一次今日日程 *@
+    @if (_scheduleEverOpened)
+    {
+        <ScheduleToday Compact="true" OnClose="CloseSchedule" />
+    }
+</div>
+
+<button class="schedule-handle @(_scheduleOpen ? "is-hidden" : "")" title="今日日程" @onclick="OpenSchedule">
+    <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" />
+    <span class="schedule-handle-text">今日日程</span>
+</button>
+
 @code {
     private const int DefaultWarningHours = 48;
 
@@ -271,6 +306,23 @@
     private string _search = string.Empty;
     private string? _error;
     private bool _loading;
+
+    /// <summary>今日日程侧边抽屉</summary>
+    private bool _scheduleOpen;
+
+    /// <summary>抽屉是否被打开过（决定今日面板是否挂载）</summary>
+    private bool _scheduleEverOpened;
+
+    /// <summary>已展开的日程折叠组（规则 Id）</summary>
+    private readonly HashSet<int> _expandedGroups = new();
+
+    private void CloseSchedule() => _scheduleOpen = false;
+
+    private void OpenSchedule()
+    {
+        _scheduleEverOpened = true;
+        _scheduleOpen = true;
+    }
 
     // ── 统一的创建/编辑模态框 ──
     private enum ModalMode { Create, Edit }
@@ -396,6 +448,28 @@
         TodoStatus.InProgress => _tasks.Where(t => t.Status == TodoStatus.InProgress || t.Status == TodoStatus.Converging),
         _ => _tasks.Where(t => t.Status == status),
     };
+
+    /// <summary>已完成泳道里，日程生成的卡由折叠组统一展示，不单独平铺。</summary>
+    private IEnumerable<TodoItemDto> LaneCards(TodoStatus status)
+        => status == TodoStatus.Done
+            ? Lane(status).Where(t => t.SourceRuleId is null)
+            : Lane(status);
+
+    /// <summary>已完成泳道里按来源规则分组（只统计还在泳道内、未归档的卡）。</summary>
+    private IEnumerable<(int RuleId, string Title, List<TodoItemDto> Tasks)> DoneGroups()
+        => _tasks
+            .Where(t => t.Status == TodoStatus.Done && t.SourceRuleId is not null)
+            .GroupBy(t => t.SourceRuleId!.Value)
+            .Select(g => (
+                RuleId: g.Key,
+                Title: g.First().SourceRuleTitle ?? "日程生成",
+                Tasks: g.ToList()))
+            .OrderByDescending(g => g.Tasks.Max(t => t.DoneAt ?? t.UpdatedAt));
+
+    private void ToggleGroup(int ruleId)
+    {
+        if (!_expandedGroups.Add(ruleId)) _expandedGroups.Remove(ruleId);
+    }
 
     private IEnumerable<TodoItemDto> DueSoon()
     {
@@ -834,7 +908,7 @@
     private static string FrozenDuration(TodoItemDto task)
     {
         if (task.FrozeAt is not { } frozeAt) return string.Empty;
-        var days = (int)((DateTime.UtcNow - frozeAt).TotalDays);
+        var days = (int)((DateTime.Now - frozeAt).TotalDays);
         return days switch
         {
             0 => "不到1天",

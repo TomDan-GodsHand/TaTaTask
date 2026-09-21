@@ -24,6 +24,10 @@ public class TodoItem
     public string? FrozenReason { get; set; }
     public DateTime? FrozeAt { get; set; }
 
+    /// <summary>该卡由哪条日程规则自动生成（生成模式）；用于「已完成」泳道按规则折叠分组。</summary>
+    public int? SourceRuleId { get; set; }
+
     public User? User { get; set; }
+    public ScheduleRule? SourceRule { get; set; }
     public ICollection<TodoStep> Steps { get; set; } = new List<TodoStep>();
 }

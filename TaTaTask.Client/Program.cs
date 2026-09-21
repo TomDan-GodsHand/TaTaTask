@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
-using Microsoft.Extensions.DependencyInjection;
 using MudBlazor.Services;
 using TaTaTask.Client.Account;
 using TaTaTask.Client.Services;
@@ -24,6 +23,7 @@ namespace TaTaTask.Client
             builder.Services.AddScoped<AuthenticationStateProvider, PersistentAuthenticationStateProvider>();
 
             builder.Services.AddScoped<ITodoService, ClientTodoService>();
+            builder.Services.AddScoped<IScheduleService, ClientScheduleService>();
 
             await builder.Build().RunAsync();
         }

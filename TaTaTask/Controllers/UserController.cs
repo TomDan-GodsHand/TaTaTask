@@ -37,6 +37,7 @@ public class UserController : ControllerBase
             Username = user.Username,
             DefaultDueWarningHours = user.DefaultDueWarningHours,
             DefaultDueDays = user.DefaultDueDays,
+            TimeZoneId = user.TimeZoneId,
         };
     }
 
@@ -73,6 +74,13 @@ public class UserController : ControllerBase
             user.DefaultDueWarningHours = request.DefaultDueWarningHours.Value;
         if (request.DefaultDueDays.HasValue)
             user.DefaultDueDays = request.DefaultDueDays.Value;
+
+        if (!string.IsNullOrWhiteSpace(request.TimeZoneId))
+        {
+            if (!UserTime.IsValid(request.TimeZoneId))
+                return BadRequest("无效的时区");
+            user.TimeZoneId = request.TimeZoneId;
+        }
 
         await _db.SaveChangesAsync();
         return Ok();

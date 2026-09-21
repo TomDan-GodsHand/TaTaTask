@@ -20,12 +20,23 @@ public class ServerTodoService : ITodoService
 
     private int Uid => _current.UserId ?? 0;
 
+    private TimeZoneInfo? _tz;
+
+    /// <summary>用户时区，每个请求作用域内只查一次。所有日历口径与 API 边界换算都用它。</summary>
+    private async Task<TimeZoneInfo> GetTzAsync()
+    {
+        if (_tz is not null) return _tz;
+        var id = await _db.Users.Where(u => u.Id == Uid).Select(u => u.TimeZoneId).FirstOrDefaultAsync();
+        return _tz = UserTime.Resolve(id);
+    }
+
     public async Task<List<TodoItemDto>> GetBoardAsync(string? search = null)
     {
         await AutoArchiveAsync();
 
         var query = _db.TodoItems
             .Include(t => t.Steps)
+            .Include(t => t.SourceRule)
             .Where(t => t.UserId == Uid && !t.IsArchived);
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -45,7 +56,8 @@ public class ServerTodoService : ITodoService
             .OrderByDescending(t => Weight(t.Priority))
             .ThenBy(t => t.SortOrder);
 
-        return withDue.Concat(without).Select(ToDto).ToList();
+        var tz = await GetTzAsync();
+        return withDue.Concat(without).Select(t => ToDto(t, tz)).ToList();
     }
 
     public async Task<TodoItemDto> CreateAsync(CreateTodoRequest request)
@@ -55,6 +67,7 @@ public class ServerTodoService : ITodoService
             .Select(t => (int?)t.SortOrder)
             .MaxAsync() ?? 0;
 
+        var tz = await GetTzAsync();
         var now = DateTime.UtcNow;
         var item = new TodoItem
         {
@@ -64,7 +77,7 @@ public class ServerTodoService : ITodoService
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description,
             Tags = NormalizeTags(request.Tags),
             Priority = request.Priority,
-            DueDate = request.DueDate,
+            DueDate = UserTime.ToUtc(request.DueDate, tz),
             DueWarningHours = request.DueWarningHours,
             SortOrder = maxSort + 1,
             CreatedAt = now,
@@ -91,7 +104,7 @@ public class ServerTodoService : ITodoService
         }
 
         await _db.SaveChangesAsync();
-        return ToDto(item);
+        return ToDto(item, tz);
     }
 
     public async Task<TodoItemDto?> UpdateAsync(int id, UpdateTodoRequest request)
@@ -100,11 +113,13 @@ public class ServerTodoService : ITodoService
             .FirstOrDefaultAsync(t => t.Id == id && t.UserId == Uid);
         if (item is null) return null;
 
+        var tz = await GetTzAsync();
+
         item.Title = request.Title.Trim();
         item.Description = request.Description;
         item.Priority = request.Priority;
         item.Tags = NormalizeTags(request.Tags);
-        item.DueDate = request.DueDate;
+        item.DueDate = UserTime.ToUtc(request.DueDate, tz);
         item.DueWarningHours = request.DueWarningHours;
         item.UpdatedAt = DateTime.UtcNow;
 
@@ -142,16 +157,57 @@ public class ServerTodoService : ITodoService
         }
 
         await _db.SaveChangesAsync();
-        return ToDto(item);
+        return ToDto(item, tz);
     }
 
     public async Task<bool> DeleteAsync(int id)
     {
         var item = await _db.TodoItems.FirstOrDefaultAsync(t => t.Id == id && t.UserId == Uid);
         if (item is null) return false;
+
+        await DetachFromScheduleAsync(item);
+
         _db.TodoItems.Remove(item);
         await _db.SaveChangesAsync();
         return true;
+    }
+
+    /// <summary>
+    /// §3.8 任务被硬删除时：引用它的日程项保留标题快照并标记「任务已删除」；
+    /// 若当天时段还没过，退回「待选」让你补选；已过时段或历史则只留痕。
+    /// </summary>
+    private async Task DetachFromScheduleAsync(TodoItem item)
+    {
+        var entries = await _db.ScheduleEntries
+            .Where(e => e.TodoItemId == item.Id)
+            .ToListAsync();
+        if (entries.Count == 0) return;
+
+        var tz = await GetTzAsync();
+        var today = UserTime.Today(tz);
+        var nowLocal = TimeOnly.FromDateTime(UserTime.ToUser(DateTime.UtcNow, tz));
+        var now = DateTime.UtcNow;
+
+        foreach (var entry in entries)
+        {
+            entry.TitleSnapshot = item.Title;
+            entry.IsTaskDeleted = true;
+            entry.TodoItemId = null;
+            entry.UpdatedAt = now;
+
+            var canRePick = entry.Date == today
+                && nowLocal <= entry.EndTime
+                && entry.State != ScheduleEntryState.Completed;
+
+            if (canRePick)
+            {
+                entry.State = ScheduleEntryState.Pending;
+            }
+            else
+            {
+                entry.HandledAt ??= now;
+            }
+        }
     }
 
     public async Task<TodoItemDto> ChangeStatusAsync(int id, TodoStatus status, string? frozenReason = null, bool resetSteps = false)
@@ -198,7 +254,7 @@ public class ServerTodoService : ITodoService
         item.Status = status;
         item.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return ToDto(item);
+        return ToDto(item, await GetTzAsync());
     }
 
     public async Task<TodoItemDto?> AddStepAsync(int todoId, string title)
@@ -225,7 +281,7 @@ public class ServerTodoService : ITodoService
         });
         task.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return ToDto(task);
+        return ToDto(task, await GetTzAsync());
     }
 
     public async Task<TodoItemDto?> ToggleStepAsync(int todoId, int stepId)
@@ -247,7 +303,7 @@ public class ServerTodoService : ITodoService
 
         task.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return ToDto(task);
+        return ToDto(task, await GetTzAsync());
     }
 
     public async Task<TodoItemDto?> DeleteStepAsync(int todoId, int stepId)
@@ -264,7 +320,7 @@ public class ServerTodoService : ITodoService
         task.Steps.Remove(step);
         task.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return ToDto(task);
+        return ToDto(task, await GetTzAsync());
     }
 
     public async Task<TodoItemDto?> UpdateStepAsync(int todoId, int stepId, string title)
@@ -277,7 +333,7 @@ public class ServerTodoService : ITodoService
         step.Title = title.Trim();
         task.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return ToDto(task);
+        return ToDto(task, await GetTzAsync());
     }
 
     public async Task ReorderStepsAsync(int todoId, List<int> stepIds)
@@ -314,7 +370,7 @@ public class ServerTodoService : ITodoService
             await _db.SaveChangesAsync();
         }
 
-        return ToDto(item);
+        return ToDto(item, await GetTzAsync());
     }
 
     public async Task<List<TodoItemDto>> GetArchivedAsync(string? tag, DateTime? from, DateTime? to, string? q)
@@ -334,18 +390,22 @@ public class ServerTodoService : ITodoService
             var s = q.Trim();
             query = query.Where(t => EF.Functions.Like(t.Title, $"%{s}%"));
         }
+
+        // from / to 是用户本地日历日，按用户时区换算成 UTC 区间再比较
+        var tz = await GetTzAsync();
         if (from.HasValue)
         {
-            query = query.Where(t => t.ArchivedAt >= from.Value);
+            var fromUtc = UserTime.DayRangeUtc(DateOnly.FromDateTime(from.Value), tz).StartUtc;
+            query = query.Where(t => t.ArchivedAt >= fromUtc);
         }
         if (to.HasValue)
         {
-            var end = to.Value.Date.AddDays(1);
-            query = query.Where(t => t.ArchivedAt < end);
+            var toEndUtc = UserTime.DayRangeUtc(DateOnly.FromDateTime(to.Value).AddDays(1), tz).StartUtc;
+            query = query.Where(t => t.ArchivedAt < toEndUtc);
         }
 
         var items = await query.OrderByDescending(t => t.ArchivedAt).ToListAsync();
-        return items.Select(ToDto).ToList();
+        return items.Select(t => ToDto(t, tz)).ToList();
     }
 
     public async Task<UserSettingsDto> GetUserSettingsAsync()
@@ -357,25 +417,30 @@ public class ServerTodoService : ITodoService
             Username = user.Username,
             DefaultDueWarningHours = user.DefaultDueWarningHours,
             DefaultDueDays = user.DefaultDueDays,
+            TimeZoneId = user.TimeZoneId,
         };
     }
 
     public async Task<DashboardStatsDto> GetStatsAsync()
     {
+        var tz = await GetTzAsync();
         var now = DateTime.UtcNow;
-        var today = now.Date;
 
-        // 周一为一周开始
-        var daysSinceMonday = ((int)today.DayOfWeek + 6) % 7;
-        var thisMonday = today.AddDays(-daysSinceMonday);
-        var lastMonday = thisMonday.AddDays(-7);
-        var flowCutoff = thisMonday.AddDays(-7 * 7); // 覆盖近8周
-        var cutoff30 = today.AddDays(-30);
+        // 全部窗口以用户时区的日历口径计算，再换算成 UTC 区间与库中 UTC 值比较
+        var todayLocal = UserTime.Today(tz);
+        var daysSinceMonday = ((int)todayLocal.DayOfWeek + 6) % 7; // 周一为一周开始
+        var thisMondayLocal = todayLocal.AddDays(-daysSinceMonday);
+        var lastMondayLocal = thisMondayLocal.AddDays(-7);
+
+        var thisMondayUtc = UserTime.DayRangeUtc(thisMondayLocal, tz).StartUtc;
+        var lastMondayUtc = UserTime.DayRangeUtc(lastMondayLocal, tz).StartUtc;
+        var flowCutoffUtc = UserTime.DayRangeUtc(thisMondayLocal.AddDays(-7 * 7), tz).StartUtc; // 覆盖近8周
+        var cutoff30Utc = UserTime.DayRangeUtc(todayLocal.AddDays(-30), tz).StartUtc;
 
         // 一次查询拿流量窗口内的任务（含已归档任务的完成记录）
         var flowItems = await _db.TodoItems
             .Where(t => t.UserId == Uid
-                && (t.CreatedAt >= flowCutoff || t.DoneAt >= flowCutoff))
+                && (t.CreatedAt >= flowCutoffUtc || t.DoneAt >= flowCutoffUtc))
             .Select(t => new { t.CreatedAt, t.DoneAt, t.DueDate })
             .ToListAsync();
 
@@ -390,23 +455,24 @@ public class ServerTodoService : ITodoService
         // --- 周流量（近8周） ---
         for (int i = 7; i >= 0; i--)
         {
-            var weekStart = thisMonday.AddDays(-7 * i);
-            var weekEnd = weekStart.AddDays(7);
+            var weekStartLocal = thisMondayLocal.AddDays(-7 * i);
+            var weekStartUtc = UserTime.DayRangeUtc(weekStartLocal, tz).StartUtc;
+            var weekEndUtc = UserTime.DayRangeUtc(weekStartLocal.AddDays(7), tz).StartUtc;
             dto.WeeklyFlow.Add(new WeeklyFlowDto
             {
-                WeekLabel = weekStart.ToString("MM/dd"),
+                WeekLabel = weekStartLocal.ToString("MM/dd"),
                 IsCurrent = i == 0,
-                Created = flowItems.Count(t => t.CreatedAt >= weekStart && t.CreatedAt < weekEnd),
-                Done = flowItems.Count(t => t.DoneAt != null && t.DoneAt >= weekStart && t.DoneAt < weekEnd),
+                Created = flowItems.Count(t => t.CreatedAt >= weekStartUtc && t.CreatedAt < weekEndUtc),
+                Done = flowItems.Count(t => t.DoneAt != null && t.DoneAt >= weekStartUtc && t.DoneAt < weekEndUtc),
             });
         }
 
         // --- 吞吐回顾 ---
-        dto.DoneThisWeek = flowItems.Count(t => t.DoneAt != null && t.DoneAt >= thisMonday);
-        dto.DoneLastWeek = flowItems.Count(t => t.DoneAt != null && t.DoneAt >= lastMonday && t.DoneAt < thisMonday);
+        dto.DoneThisWeek = flowItems.Count(t => t.DoneAt != null && t.DoneAt >= thisMondayUtc);
+        dto.DoneLastWeek = flowItems.Count(t => t.DoneAt != null && t.DoneAt >= lastMondayUtc && t.DoneAt < thisMondayUtc);
 
         var doneRecent = flowItems
-            .Where(t => t.DoneAt != null && t.DoneAt >= cutoff30)
+            .Where(t => t.DoneAt != null && t.DoneAt >= cutoff30Utc)
             .Select(t => new { Done = t.DoneAt!.Value, t.CreatedAt, t.DueDate })
             .ToList();
 
@@ -440,7 +506,7 @@ public class ServerTodoService : ITodoService
         {
             Id = t.Id,
             Title = t.Title,
-            DueDate = t.DueDate!.Value,
+            DueDate = UserTime.ToUser(t.DueDate!.Value, tz),
             DaysOverdue = (int)Math.Floor((now - t.DueDate.Value).TotalDays),
         }).ToList();
 
@@ -529,31 +595,34 @@ public class ServerTodoService : ITodoService
         return parts.Length == 0 ? null : string.Join(",", parts);
     }
 
-    private static TodoItemDto ToDto(TodoItem t) => new()
+    /// <summary>库中 UTC → 用户时区墙钟时间（API 边界的唯一转换点）。</summary>
+    private static TodoItemDto ToDto(TodoItem t, TimeZoneInfo tz) => new()
     {
         Id = t.Id,
         Title = t.Title,
         Description = t.Description,
         Priority = t.Priority,
         Tags = t.Tags,
-        DueDate = t.DueDate,
+        DueDate = UserTime.ToUser(t.DueDate, tz),
         DueWarningHours = t.DueWarningHours,
         Status = t.Status,
         SortOrder = t.SortOrder,
-        CreatedAt = t.CreatedAt,
-        UpdatedAt = t.UpdatedAt,
+        CreatedAt = UserTime.ToUser(t.CreatedAt, tz),
+        UpdatedAt = UserTime.ToUser(t.UpdatedAt, tz),
         IsArchived = t.IsArchived,
-        ArchivedAt = t.ArchivedAt,
-        DoneAt = t.DoneAt,
+        ArchivedAt = UserTime.ToUser(t.ArchivedAt, tz),
+        DoneAt = UserTime.ToUser(t.DoneAt, tz),
         PreviousStatus = t.PreviousStatus,
         FrozenReason = t.FrozenReason,
-        FrozeAt = t.FrozeAt,
+        FrozeAt = UserTime.ToUser(t.FrozeAt, tz),
+        SourceRuleId = t.SourceRuleId,
+        SourceRuleTitle = t.SourceRule != null ? t.SourceRule.Title : null,
         Steps = t.Steps.OrderBy(s => s.SortOrder).Select(s => new TodoStepDto
         {
             Id = s.Id,
             Title = s.Title,
             IsCompleted = s.IsCompleted,
-            DueDate = s.DueDate,
+            DueDate = UserTime.ToUser(s.DueDate, tz),
             SortOrder = s.SortOrder,
         }).ToList(),
     };

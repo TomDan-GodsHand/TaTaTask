@@ -1,7 +1,10 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 @inject NavigationManager Nav
 
 <MudThemeProvider @ref="_themeProvide" Theme="@_theme" IsDarkMode="@_isDarkMode" />
+@* MudPopoverProvider 不能放在这里：本布局是静态 SSR，而使用弹出层的页面是交互孤岛，
+   两者不在同一个渲染树作用域里。需要弹出层的页面各自在页面内声明。
+   （底部的 MudDialogProvider / MudSnackbarProvider 目前只被静态内容使用，暂无此问题。） *@
 <MudDialogProvider />
 <MudSnackbarProvider />
 
@@ -21,6 +24,10 @@
                            Color="@(IsActive("archive") ? Color.Primary : Color.Inherit)"
                            Style="@(IsActive("archive") ? "font-weight:bold;" : null)"
                            StartIcon="@Icons.Material.Filled.Archive" Class="nav-btn mr-1"><span class="nav-btn-label">归档</span></MudButton>
+                <MudButton Href="schedule" Variant="Variant.Text"
+                           Color="@(IsActive("schedule") ? Color.Primary : Color.Inherit)"
+                           Style="@(IsActive("schedule") ? "font-weight:bold;" : null)"
+                           StartIcon="@Icons.Material.Filled.Today" Class="nav-btn mr-1"><span class="nav-btn-label">日程</span></MudButton>
                 <MudButton Href="stats" Variant="Variant.Text"
                            Color="@(IsActive("stats") ? Color.Primary : Color.Inherit)"
                            Style="@(IsActive("stats") ? "font-weight:bold;" : null)"
@@ -64,6 +71,9 @@
                 <MudIconButton Href="tatatask" Icon="@Icons.Material.Filled.Dashboard"
                                Color="@(IsActive("tatatask") ? Color.Primary : Color.Inherit)"
                                title="看板" Class="mobile-nav-item" />
+                <MudIconButton Href="schedule" Icon="@Icons.Material.Filled.Today"
+                               Color="@(IsActive("schedule") ? Color.Primary : Color.Inherit)"
+                               title="日程" Class="mobile-nav-item" />
                 <MudIconButton Href="archive" Icon="@Icons.Material.Filled.Archive"
                                Color="@(IsActive("archive") ? Color.Primary : Color.Inherit)"
                                title="归档" Class="mobile-nav-item" />

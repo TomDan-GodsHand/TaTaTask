@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaTaTask.Data;
 
@@ -10,9 +11,11 @@ using TaTaTask.Data;
 namespace TaTaTask.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260921062958_AddUserTimeZone")]
+    partial class AddUserTimeZone
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.9");
@@ -77,172 +80,6 @@ namespace TaTaTask.Migrations
                     b.ToTable("FeedbackReplies");
                 });
 
-            modelBuilder.Entity("TaTaTask.Models.Entities.ScheduleEntry", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateOnly>("Date")
-                        .HasColumnType("TEXT");
-
-                    b.Property<TimeOnly>("EndTime")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("HandledAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("IsTaskDeleted")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("RuleId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<TimeOnly>("StartTime")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("State")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("TitleSnapshot")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("TodoItemId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RuleId");
-
-                    b.HasIndex("TodoItemId");
-
-                    b.HasIndex("UserId", "Date");
-
-                    b.HasIndex("UserId", "Date", "RuleId")
-                        .IsUnique();
-
-                    b.ToTable("ScheduleEntries");
-                });
-
-            modelBuilder.Entity("TaTaTask.Models.Entities.ScheduleEntryStep", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("ScheduleEntryId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TodoStepId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ScheduleEntryId");
-
-                    b.HasIndex("TodoStepId");
-
-                    b.HasIndex("ScheduleEntryId", "TodoStepId")
-                        .IsUnique();
-
-                    b.ToTable("ScheduleEntrySteps");
-                });
-
-            modelBuilder.Entity("TaTaTask.Models.Entities.ScheduleRule", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("DaysOfWeek")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateOnly?>("EndDate")
-                        .HasColumnType("TEXT");
-
-                    b.Property<TimeOnly>("EndTime")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("Mode")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateOnly?>("StartDate")
-                        .HasColumnType("TEXT");
-
-                    b.Property<TimeOnly>("StartTime")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Tags")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "IsActive");
-
-                    b.ToTable("ScheduleRules");
-                });
-
-            modelBuilder.Entity("TaTaTask.Models.Entities.ScheduleRuleStep", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("ScheduleRuleId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ScheduleRuleId");
-
-                    b.ToTable("ScheduleRuleSteps");
-                });
-
             modelBuilder.Entity("TaTaTask.Models.Entities.TodoItem", b =>
                 {
                     b.Property<int>("Id")
@@ -286,9 +123,6 @@ namespace TaTaTask.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int?>("SourceRuleId")
-                        .HasColumnType("INTEGER");
-
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
@@ -309,11 +143,7 @@ namespace TaTaTask.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceRuleId");
-
                     b.HasIndex("UserId");
-
-                    b.HasIndex("UserId", "SourceRuleId");
 
                     b.HasIndex("UserId", "Status");
 
@@ -425,86 +255,13 @@ namespace TaTaTask.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("TaTaTask.Models.Entities.ScheduleEntry", b =>
-                {
-                    b.HasOne("TaTaTask.Models.Entities.ScheduleRule", "Rule")
-                        .WithMany("Entries")
-                        .HasForeignKey("RuleId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("TaTaTask.Models.Entities.TodoItem", "TodoItem")
-                        .WithMany()
-                        .HasForeignKey("TodoItemId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("TaTaTask.Models.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Rule");
-
-                    b.Navigation("TodoItem");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("TaTaTask.Models.Entities.ScheduleEntryStep", b =>
-                {
-                    b.HasOne("TaTaTask.Models.Entities.ScheduleEntry", "ScheduleEntry")
-                        .WithMany("Steps")
-                        .HasForeignKey("ScheduleEntryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("TaTaTask.Models.Entities.TodoStep", "TodoStep")
-                        .WithMany()
-                        .HasForeignKey("TodoStepId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ScheduleEntry");
-
-                    b.Navigation("TodoStep");
-                });
-
-            modelBuilder.Entity("TaTaTask.Models.Entities.ScheduleRule", b =>
-                {
-                    b.HasOne("TaTaTask.Models.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("TaTaTask.Models.Entities.ScheduleRuleStep", b =>
-                {
-                    b.HasOne("TaTaTask.Models.Entities.ScheduleRule", "ScheduleRule")
-                        .WithMany("Steps")
-                        .HasForeignKey("ScheduleRuleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ScheduleRule");
-                });
-
             modelBuilder.Entity("TaTaTask.Models.Entities.TodoItem", b =>
                 {
-                    b.HasOne("TaTaTask.Models.Entities.ScheduleRule", "SourceRule")
-                        .WithMany()
-                        .HasForeignKey("SourceRuleId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("TaTaTask.Models.Entities.User", "User")
                         .WithMany("TodoItems")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("SourceRule");
 
                     b.Navigation("User");
                 });
@@ -523,18 +280,6 @@ namespace TaTaTask.Migrations
             modelBuilder.Entity("TaTaTask.Models.Entities.FeedbackItem", b =>
                 {
                     b.Navigation("Replies");
-                });
-
-            modelBuilder.Entity("TaTaTask.Models.Entities.ScheduleEntry", b =>
-                {
-                    b.Navigation("Steps");
-                });
-
-            modelBuilder.Entity("TaTaTask.Models.Entities.ScheduleRule", b =>
-                {
-                    b.Navigation("Entries");
-
-                    b.Navigation("Steps");
                 });
 
             modelBuilder.Entity("TaTaTask.Models.Entities.TodoItem", b =>

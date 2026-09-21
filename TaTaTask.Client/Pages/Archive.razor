@@ -4,8 +4,11 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using TaTaTask.Client.Services
 @using TaTaTask.Models.Dtos
+@using TaTaTask.Models.Enums
 @attribute [Authorize]
 @inject ITodoService TodoService
+@inject IScheduleService ScheduleService
+@inject NavigationManager Nav
 
 <PageTitle>归档</PageTitle>
 
@@ -64,6 +67,59 @@ else
             }
         </tbody>
     </MudSimpleTable>
+}
+
+@* ==================== 日程历史（§7） ==================== *@
+<MudDivider Class="my-4" />
+
+<div class="d-flex align-center mb-2" style="gap:8px; flex-wrap:wrap;">
+    <MudText Typo="Typo.h6">
+        <MudIcon Icon="@Icons.Material.Filled.EventNote" Size="Size.Small" Class="mr-1" /> 日程历史
+    </MudText>
+    <MudText Typo="Typo.caption" Class="mud-text-secondary">日期范围与上方筛选一致</MudText>
+    @if (_ruleFilterLabel is not null)
+    {
+        <MudChip T="string" Size="Size.Small" Color="Color.Primary"
+                 OnClose="ClearRuleFilter" CloseIcon="@Icons.Material.Filled.Close">
+            只看规则：@_ruleFilterLabel
+        </MudChip>
+    }
+</div>
+
+@if (_history.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">这段时间没有日程记录。</MudAlert>
+}
+else
+{
+    @foreach (var day in _history)
+    {
+        <MudPaper Class="pa-2 mb-2" Elevation="1">
+            <div class="d-flex align-center" style="gap:8px; flex-wrap:wrap;">
+                <MudText Typo="Typo.subtitle2" Style="min-width:96px;">@day.Date.ToString("yyyy-MM-dd")</MudText>
+                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">完成 @day.Completed</MudChip>
+                @if (day.Skipped > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">跳过 @day.Skipped</MudChip>
+                }
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">共 @day.AllCount 条</MudText>
+            </div>
+
+            @foreach (var e in day.Entries)
+            {
+                <div class="d-flex align-center mt-1" style="gap:6px; flex-wrap:wrap;">
+                    <MudText Typo="Typo.caption" Style="min-width:84px; font-weight:600;">@e.TimeLabel</MudText>
+                    <MudText Typo="Typo.body2" Style="flex:1; min-width:100px;">@e.Title</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@e.RuleTitle</MudText>
+                    @if (e.TotalSteps > 0)
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">@e.DoneSteps/@e.TotalSteps 步</MudText>
+                    }
+                    <MudChip T="string" Size="Size.Small" Color="@StateColor(e)">@StateLabel(e)</MudChip>
+                </div>
+            }
+        </MudPaper>
+    }
 }
 
 @if (_detail is not null)
@@ -153,6 +209,15 @@ else
     private List<TodoItemDto> _items = new();
     private TodoItemDto? _detail;
 
+    private List<ScheduleHistoryDto> _history = new();
+    private string? _ruleFilterLabel;
+    private int? _loadedRule;
+    private bool _initialized;
+
+    /// <summary>看板折叠组的「查看全部」带过来的规则筛选（§6.6 → §7）。</summary>
+    [SupplyParameterFromQuery(Name = "rule")]
+    public int? RuleParam { get; set; }
+
     private void OpenDetail(TodoItemDto item) => _detail = item;
 
     private void CloseDetail() => _detail = null;
@@ -166,7 +231,19 @@ else
     {
         _from = DateTime.Today.AddDays(-7);
         _to = DateTime.Today;
+        _loadedRule = RuleParam;
+        _initialized = true;
         await Load();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // 从看板跳进来 / 点掉规则筛选时，查询参数会变，需要重新载入
+        if (_initialized && _loadedRule != RuleParam)
+        {
+            _loadedRule = RuleParam;
+            await Load();
+        }
     }
 
     private async Task Load()
@@ -175,12 +252,47 @@ else
         try
         {
             _items = await TodoService.GetArchivedAsync(_tag, _from, _to, _q);
+
+            var from = DateOnly.FromDateTime(_from ?? DateTime.Today.AddDays(-7));
+            var to = DateOnly.FromDateTime(_to ?? DateTime.Today);
+            _history = await ScheduleService.GetHistoryAsync(from, to, RuleParam);
+
+            _ruleFilterLabel = RuleParam is null
+                ? null
+                : _history.SelectMany(d => d.Entries).Select(e => e.RuleTitle).FirstOrDefault()
+                  ?? $"#{RuleParam}";
         }
         finally
         {
             _loading = false;
         }
     }
+
+    private void ClearRuleFilter() => Nav.NavigateTo("archive");
+
+    private static string StateLabel(ScheduleEntryDto e)
+    {
+        if (e.State != ScheduleEntryState.Completed && e.IsTaskDeleted && e.TodoItemId is null)
+        {
+            return "任务已删除";
+        }
+
+        return e.State switch
+        {
+            ScheduleEntryState.Completed => "已完成",
+            ScheduleEntryState.Skipped => "已跳过",
+            ScheduleEntryState.Pending => "待选",
+            _ => "未完成",
+        };
+    }
+
+    private static Color StateColor(ScheduleEntryDto e) => e.State switch
+    {
+        ScheduleEntryState.Completed => Color.Success,
+        ScheduleEntryState.Skipped => Color.Default,
+        ScheduleEntryState.Pending => Color.Info,
+        _ => e.IsTaskDeleted ? Color.Error : Color.Warning,
+    };
 
     private async Task Reset()
     {
