@@ -24,67 +24,150 @@
 <div class="stats-page">
     <MudText Typo="Typo.h5" Class="mb-4"><b>数据统计</b></MudText>
 
+    @if (_stats.DoneLast30 == 0 && _stats.DoneThisWeek == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3">
+            还没有完成记录。完成任务后，这里会出现你的产出节奏、效率与精力分布回顾。
+        </MudAlert>
+    }
+
     <div class="stats-cards">
         <MudPaper Class="stats-card" Elevation="2">
-            <MudText Typo="Typo.caption" Style="opacity:.7;">活跃任务</MudText>
-            <MudText Typo="Typo.h4" Color="Color.Primary"><b>@_stats.ActiveCount</b></MudText>
+            <MudText Typo="Typo.caption" Style="opacity:.7;">本周完成</MudText>
+            <MudText Typo="Typo.h4" Color="Color.Success"><b>@_stats.DoneThisWeek</b></MudText>
+            <div class="stats-card-sub @WeekDeltaClass()">@WeekDelta()</div>
         </MudPaper>
+
         <MudPaper Class="stats-card" Elevation="2">
-            <MudText Typo="Typo.caption" Style="opacity:.7;">今日完成</MudText>
-            <MudText Typo="Typo.h4" Color="Color.Success"><b>@_stats.DoneTodayCount</b></MudText>
+            <MudText Typo="Typo.caption" Style="opacity:.7;">近30天完成</MudText>
+            <MudText Typo="Typo.h4" Color="Color.Primary"><b>@_stats.DoneLast30</b></MudText>
+            <div class="stats-card-sub">近30天累计产出</div>
         </MudPaper>
-        <div style="cursor:pointer;" @onclick="@(() => Nav.NavigateTo("tatatask"))">
-            <MudPaper Class="stats-card" Elevation="2">
-                <MudText Typo="Typo.caption" Style="opacity:.7;">
-                    <MudIcon Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small" /> 冻结任务
-                </MudText>
-                <MudText Typo="Typo.h4" Color="Color.Info"><b>@_stats.FrozenCount</b></MudText>
-            </MudPaper>
-        </div>
+
+        <MudPaper Class="stats-card" Elevation="2">
+            <MudText Typo="Typo.caption" Style="opacity:.7;">平均周期</MudText>
+            @if (_stats.AvgCycleDays is double cycle)
+            {
+                <MudText Typo="Typo.h4" Color="Color.Primary"><b>@CycleLabel(cycle)</b></MudText>
+                <div class="stats-card-sub">创建 → 完成（近30天）</div>
+            }
+            else
+            {
+                <MudText Typo="Typo.h4" Style="opacity:.35;"><b>—</b></MudText>
+                <div class="stats-card-sub">暂无样本</div>
+            }
+        </MudPaper>
+
+        <MudPaper Class="stats-card" Elevation="2">
+            <MudText Typo="Typo.caption" Style="opacity:.7;">准时率</MudText>
+            @{
+                var dueSamples = _stats.OnTimeDoneCount + _stats.OverdueDoneCount;
+            }
+            @if (dueSamples > 0)
+            {
+                var onTimePct = (int)(_stats.OnTimeDoneCount * 100.0 / dueSamples);
+                <MudText Typo="Typo.h4" Color="@(onTimePct >= 50 ? Color.Success : Color.Warning)"><b>@onTimePct%</b></MudText>
+                <div class="stats-card-sub">
+                    @dueSamples 个带截止日样本@(_stats.AvgOverdueDays is double od ? $" · 平均逾期 {od:0.#} 天" : "")
+                </div>
+            }
+            else
+            {
+                <MudText Typo="Typo.h4" Style="opacity:.35;"><b>—</b></MudText>
+                <div class="stats-card-sub">暂无样本</div>
+            }
+        </MudPaper>
+
         <MudPaper Class="stats-card" Elevation="2">
             <MudText Typo="Typo.caption" Color="Color.Error" Style="opacity:.7;">逾期任务</MudText>
-            <MudText Typo="Typo.h4" Color="Color.Error"><b>@_stats.OverdueCount</b></MudText>
-        </MudPaper>
-        <MudPaper Class="stats-card" Elevation="2">
-            <MudText Typo="Typo.caption" Style="opacity:.7;">步骤完成率</MudText>
-            <MudText Typo="Typo.h4" Color="Color.Primary"><b>@StepRate()</b></MudText>
+            <MudText Typo="Typo.h4" Color="@(_stats.OverdueCount > 0 ? Color.Error : Color.Success)"><b>@_stats.OverdueCount</b></MudText>
+            <div class="stats-card-sub">@(_stats.OverdueCount > 0 ? "见下方明细" : "无逾期 ✓")</div>
         </MudPaper>
     </div>
 
     <div class="stats-panels">
         <div class="stats-panel">
+            <div class="d-flex align-center mb-3" style="gap:12px;">
+                <MudText Typo="Typo.subtitle1">
+                    <MudIcon Icon="@Icons.Material.Filled.SwapVert" Size="Size.Small" Class="mr-1" /> 近8周 新增 vs 完成
+                </MudText>
+                <span class="legend-item"><span class="legend-dot legend-dot-created"></span>新增</span>
+                <span class="legend-item"><span class="legend-dot legend-dot-done"></span>完成</span>
+            </div>
+            @{
+                var flowMax = Math.Max(1, _stats.WeeklyFlow.Count > 0 ? _stats.WeeklyFlow.Max(w => Math.Max(w.Created, w.Done)) : 1);
+            }
+            <div class="flow-rows">
+                @foreach (var w in _stats.WeeklyFlow)
+                {
+                    <div class="flow-row">
+                        <div class="flow-week @(w.IsCurrent ? "flow-week-current" : "")">
+                            @(w.IsCurrent ? "本周" : w.WeekLabel)
+                        </div>
+                        <div class="flow-bars">
+                            <div class="flow-track"><div class="flow-bar flow-bar-created" style="width:@((int)(w.Created * 100.0 / flowMax))%"></div></div>
+                            <div class="flow-track"><div class="flow-bar flow-bar-done" style="width:@((int)(w.Done * 100.0 / flowMax))%"></div></div>
+                        </div>
+                        <div class="flow-nums">
+                            <span class="flow-num flow-num-created">+@w.Created</span>
+                            <span class="flow-num flow-num-done">@w.Done</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="stats-panel">
             <MudText Typo="Typo.subtitle1" Class="mb-3">
-                <MudIcon Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small" Class="mr-1" /> 冻结清单
+                <MudIcon Icon="@Icons.Material.Filled.Alarm" Size="Size.Small" Class="mr-1" /> 逾期明细
             </MudText>
-            @if (_stats.FrozenItems.Count == 0)
+            @if (_stats.OverdueItems.Count == 0)
             {
-                <MudText Typo="Typo.body2" Style="opacity:.5;">暂无冻结任务</MudText>
+                <div class="empty-hint">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" Class="mr-1" />
+                    当前没有逾期任务，保持！
+                </div>
             }
             else
             {
-                <div class="frozen-list">
-                    @foreach (var f in _stats.FrozenItems)
+                <div class="overdue-list">
+                    @foreach (var o in _stats.OverdueItems)
                     {
-                        <div class="frozen-item @(f.DaysFrozen >= 7 ? "frozen-warn" : "")" style="cursor:pointer;"
-                             @onclick="@(() => Nav.NavigateTo("tatatask"))">
+                        <div class="overdue-item" style="cursor:pointer;" @onclick="@(() => Nav.NavigateTo("tatatask"))">
                             <div class="d-flex align-center">
-                                @if (f.DaysFrozen >= 7)
-                                {
-                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Color="Color.Error" Class="mr-1" />
-                                }
-                                else
-                                {
-                                    <MudIcon Icon="@Icons.Material.Filled.AcUnit" Size="Size.Small" Color="Color.Info" Class="mr-1" />
-                                }
-                                <MudText Typo="Typo.body2" Style="flex:1;">@f.Title</MudText>
-                                <MudChip T="string" Size="Size.Small" Color="@(f.DaysFrozen >= 7 ? Color.Error : Color.Info)">
-                                    冻结 @f.DaysFrozen 天
-                                </MudChip>
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Color="Color.Error" Class="mr-1" />
+                                <MudText Typo="Typo.body2" Style="flex:1;">@o.Title</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Error">逾期 @o.DaysOverdue 天</MudChip>
                             </div>
-                            @if (!string.IsNullOrWhiteSpace(f.FrozenReason))
-                            {
-                                <MudText Typo="Typo.caption" Style="opacity:.6; margin-left:28px;">@f.FrozenReason</MudText>
-                            }
+                            <MudText Typo="Typo.caption" Style="opacity:.6; margin-left:28px;">截止 @o.DueDate.ToString("MM/dd HH:mm")</MudText>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="stats-panels">
+        <div class="stats-panel">
+            <MudText Typo="Typo.subtitle1" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Filled.Label" Size="Size.Small" Class="mr-1" /> 标签分布（活跃任务）
+            </MudText>
+            @{
+                var tagMax = Math.Max(1, _stats.TagCounts.Count > 0 ? _stats.TagCounts.Max(t => t.Count) : 1);
+            }
+            @if (_stats.TagCounts.Count == 0)
+            {
+                <div class="empty-hint">活跃任务暂无标签</div>
+            }
+            else
+            {
+                <div class="dist-rows">
+                    @foreach (var t in _stats.TagCounts)
+                    {
+                        <div class="dist-row">
+                            <span class="dist-label" title="@t.Tag">@t.Tag</span>
+                            <div class="dist-track"><div class="dist-bar" style="width:@((int)(t.Count * 100.0 / tagMax))%"></div></div>
+                            <span class="dist-num">@t.Count</span>
                         </div>
                     }
                 </div>
@@ -93,30 +176,57 @@
 
         <div class="stats-panel">
             <MudText Typo="Typo.subtitle1" Class="mb-3">
-                <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Small" Class="mr-1" /> 近7天完成趋势
+                <MudIcon Icon="@Icons.Material.Filled.Flag" Size="Size.Small" Class="mr-1" /> 优先级分布（活跃任务）
             </MudText>
             @{
-                var maxCount = _stats.DailyDone.Count > 0 ? _stats.DailyDone.Max(d => d.Count) : 1;
+                var prioLabels = new[] { "无", "!", "!!", "!!!", "!!!!" };
+                var prioTotal = _stats.PriorityCounts.Sum();
+                var prioMax = Math.Max(1, _stats.PriorityCounts.DefaultIfEmpty(0).Max());
             }
-            <div class="trend-bars">
-                @foreach (var d in _stats.DailyDone)
-                {
-                    var width = maxCount > 0 ? (int)(d.Count * 100.0 / maxCount) : 0;
-                    var isWeekend = DateIsWeekend(d.Date);
-                    <div class="trend-row">
-                        <MudText Typo="Typo.caption" Style="width:42px;" Color="@(isWeekend ? Color.Warning : Color.Default)">@d.Date</MudText>
-                        <div class="trend-bar-track">
-                            <div class="trend-bar @(isWeekend ? "trend-bar-weekend" : "")" style="width:@(width)%">
-                                @if (d.Count > 0)
-                                {
-                                    <span class="trend-bar-label">@d.Count</span>
-                                }
-                            </div>
+            @if (prioTotal == 0)
+            {
+                <div class="empty-hint">暂无活跃任务</div>
+            }
+            else
+            {
+                <div class="dist-rows">
+                    @for (var p = 0; p < _stats.PriorityCounts.Length; p++)
+                    {
+                        if (_stats.PriorityCounts[p] == 0) { continue; }
+                        <div class="dist-row">
+                            <span class="dist-label">@prioLabels[p]</span>
+                            <div class="dist-track"><div class="dist-bar dist-bar-priority" style="width:@((int)(_stats.PriorityCounts[p] * 100.0 / prioMax))%"></div></div>
+                            <span class="dist-num">@_stats.PriorityCounts[p]</span>
                         </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="stats-panel stats-panel-block">
+        <MudText Typo="Typo.subtitle1" Class="mb-3">
+            <MudIcon Icon="@Icons.Material.Filled.HourglassBottom" Size="Size.Small" Class="mr-1" /> 老化任务（创建最久未完成）
+        </MudText>
+        @if (_stats.AgingItems.Count == 0)
+        {
+            <div class="empty-hint">暂无活跃任务</div>
+        }
+        else
+        {
+            <div class="aging-list">
+                @foreach (var a in _stats.AgingItems)
+                {
+                    <div class="aging-item @(a.AgeDays >= 14 ? "aging-warn" : "")" style="cursor:pointer;"
+                         @onclick="@(() => Nav.NavigateTo("tatatask"))">
+                        <MudIcon Icon="@(a.AgeDays >= 14 ? Icons.Material.Filled.Warning : Icons.Material.Filled.Schedule)"
+                                 Size="Size.Small" Color="@(a.AgeDays >= 14 ? Color.Error : Color.Default)" Class="mr-1" />
+                        <MudText Typo="Typo.body2" Style="flex:1;">@a.Title</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="@(a.AgeDays >= 14 ? Color.Error : Color.Default)">已 @a.AgeDays 天</MudChip>
                     </div>
                 }
             </div>
-        </div>
+        }
     </div>
 </div>
 
@@ -172,19 +282,23 @@
             await _hub.DisposeAsync();
     }
 
-    private string StepRate()
+    private string WeekDelta() => (_stats.DoneThisWeek, _stats.DoneLastWeek) switch
     {
-        if (_stats.TotalStepsActive == 0) return "N/A";
-        var pct = (int)(_stats.CompletedStepsActive * 100.0 / _stats.TotalStepsActive);
-        return $"{pct}%";
-    }
+        (var t, var l) when t > l => $"较上周 +{t - l}",
+        (var t, var l) when t < l => $"较上周 −{l - t}",
+        _ => "与上周持平",
+    };
 
-    private static bool DateIsWeekend(string dateStr)
+    private string WeekDeltaClass() => (_stats.DoneThisWeek, _stats.DoneLastWeek) switch
     {
-        if (DateTime.TryParseExact(dateStr, "MM/dd", null, System.Globalization.DateTimeStyles.None, out var dt))
-        {
-            return dt.DayOfWeek == DayOfWeek.Saturday || dt.DayOfWeek == DayOfWeek.Sunday;
-        }
-        return false;
+        (var t, var l) when t > l => "delta-up",
+        (var t, var l) when t < l => "delta-down",
+        _ => "",
+    };
+
+    private static string CycleLabel(double days)
+    {
+        if (days < 1) return "<1 天";
+        return $"{days:0.#} 天";
     }
 }
