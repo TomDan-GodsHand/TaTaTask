@@ -7,7 +7,7 @@ using TaTaTask.Models.Enums;
 
 namespace TaTaTask.Services;
 
-public class ServerTodoService : ITodoService
+public partial class ServerTodoService : ITodoService
 {
     private readonly AppDbContext _db;
     private readonly ICurrentUser _current;

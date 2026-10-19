@@ -4,6 +4,8 @@
 
 <h1 align="center">TaTaTask</h1>
 
+外部网页与 AI agent 接入：参见 [Web API / MCP 接入说明](docs/external-access.md)。
+
 <p align="center">
   <strong>自托管的看板式个人任务管理应用</strong><br>
   简单、快速、隐私优先。你的任务你做主。

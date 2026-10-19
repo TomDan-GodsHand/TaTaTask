@@ -11,6 +11,9 @@ using TaTaTask.Components.Account;
 using TaTaTask.Data;
 using TaTaTask.Hubs;
 using TaTaTask.Services;
+using TaTaTask.External;
+using Microsoft.OpenApi;
+using ModelContextProtocol.AspNetCore;
 
 namespace TaTaTask
 {
@@ -31,6 +34,29 @@ namespace TaTaTask
 
             builder.Services.AddMudServices();
             builder.Services.AddControllers();
+            builder.Services.AddProblemDetails();
+            builder.Services.AddOpenApi("external", options =>
+            {
+                options.ShouldInclude = description => description.GroupName == "external";
+                options.AddDocumentTransformer((document, context, cancellationToken) =>
+                {
+                    document.Info.Title = "TaTaTask External API";
+                    document.Info.Version = "v1";
+                    document.Info.Description = "使用个人访问令牌。所有日期时间均为用户时区下的墙钟时间，不附带 Z 或 UTC 偏移量。";
+                    document.Components ??= new();
+                    document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+                    document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
+                    {
+                        Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "TaTaTask personal access token",
+                    };
+                    document.Security ??= [];
+                    document.Security.Add(new OpenApiSecurityRequirement
+                    {
+                        [new OpenApiSecuritySchemeReference("Bearer", document)] = [],
+                    });
+                    return Task.CompletedTask;
+                });
+            });
             builder.Services.AddCascadingAuthenticationState();
 
             builder.Services.AddDbContext<AppDbContext>(options =>
@@ -42,8 +68,22 @@ namespace TaTaTask
 
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddScoped<ICurrentUser, CurrentUser>();
-            builder.Services.AddScoped<ITodoService, ServerTodoService>();
+            builder.Services.AddScoped<ServerTodoService>();
+            builder.Services.AddScoped<ITodoService>(sp => sp.GetRequiredService<ServerTodoService>());
             builder.Services.AddScoped<IScheduleService, ServerScheduleService>();
+            builder.Services.AddScoped<ApiTokenStore>();
+            builder.Services.AddScoped<ExternalApiService>();
+            builder.Services.AddMcpServer()
+                .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateless)
+                .WithTools<TaskTools>();
+            builder.Services.AddCors(options => options.AddPolicy("ExternalClients", policy =>
+            {
+                var origins = builder.Configuration.GetSection("ExternalAccess:AllowedOrigins").Get<string[]>() ?? [];
+                if (origins.Length > 0)
+                    policy.WithOrigins(origins).WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                        .WithHeaders("Authorization", "Content-Type", "MCP-Protocol-Version", "Mcp-Session-Id")
+                        .WithExposedHeaders("Location", "Mcp-Session-Id");
+            }));
 
             builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
                 .AddCookie(options =>
@@ -56,8 +96,15 @@ namespace TaTaTask
                     options.Cookie.HttpOnly = true;
                     options.Cookie.SameSite = SameSiteMode.Lax;
                     options.Cookie.Name = "TaTaTask.Auth";
-                });
-            builder.Services.AddAuthorization();
+                })
+                .AddScheme<AuthenticationSchemeOptions, ApiTokenHandler>(ExternalAuth.Scheme, _ => { });
+            builder.Services.AddAuthorization(options =>
+            {
+                options.AddPolicy(ExternalAuth.Read, policy => policy.AddAuthenticationSchemes(ExternalAuth.Scheme)
+                    .RequireAuthenticatedUser().RequireClaim(ExternalAuth.Scope, "read"));
+                options.AddPolicy(ExternalAuth.Write, policy => policy.AddAuthenticationSchemes(ExternalAuth.Scheme)
+                    .RequireAuthenticatedUser().RequireClaim(ExternalAuth.Scope, "write"));
+            });
             builder.Services.AddSignalR();
 
             var app = builder.Build();
@@ -93,7 +140,13 @@ namespace TaTaTask
                 logger.LogInformation("[Step 5/6] Middleware: ExceptionHandler + HSTS enabled (Production)");
             }
 
-            app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+            app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api/v1")
+                && !context.Request.Path.StartsWithSegments("/mcp") && !context.Request.Path.StartsWithSegments("/openapi"),
+                branch => branch.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
+            app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1")
+                || context.Request.Path.StartsWithSegments("/mcp") || context.Request.Path.StartsWithSegments("/openapi"),
+                branch => branch.UseExceptionHandler(error => error.Run(context =>
+                    Results.Problem(statusCode: 500, title: "服务暂时无法完成请求").ExecuteAsync(context))));
 
             if (app.Configuration.GetValue<bool>("ReverseProxy"))
             {
@@ -112,12 +165,32 @@ namespace TaTaTask
                 app.UseHttpsRedirection();
             }
 
+            app.UseRouting();
+            app.UseCors();
+            // MCP is also callable outside a browser; validate Origin explicitly, not only via CORS.
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Path.StartsWithSegments("/mcp") && context.Request.Headers.TryGetValue("Origin", out var origin))
+                {
+                    var allowed = app.Configuration.GetSection("ExternalAccess:AllowedOrigins").Get<string[]>() ?? [];
+                    var sameOrigin = $"{context.Request.Scheme}://{context.Request.Host}";
+                    if (origin.Count != 1 || (!string.Equals(origin[0], sameOrigin, StringComparison.OrdinalIgnoreCase)
+                        && !allowed.Contains(origin[0], StringComparer.OrdinalIgnoreCase)))
+                    {
+                        await Results.Problem(statusCode: 403, title: "Origin 不在允许列表中").ExecuteAsync(context);
+                        return;
+                    }
+                }
+                await next(context);
+            });
             app.UseAuthentication();
             app.UseAuthorization();
 
             app.UseAntiforgery();
 
             app.MapControllers();
+            app.MapMcp("/mcp").RequireAuthorization(ExternalAuth.Read).RequireCors("ExternalClients");
+            app.MapOpenApi().RequireAuthorization(ExternalAuth.Read).RequireCors("ExternalClients");
             app.MapHub<TodoHub>("/hubs/todo");
 
             app.MapStaticAssets();

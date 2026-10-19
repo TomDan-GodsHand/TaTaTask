@@ -14,7 +14,7 @@ dotnet build                                           # 构建全部三个项�
 dotnet publish TaTaTask -c Release -r linux-x64 --self-contained -o publish
 ```
 
-本仓库无测试。
+集成测试位于 `TaTaTask.Tests/`，运行 `dotnet test`。测试使用构建输出目录下的独立临时 SQLite 数据库，不使用业务数据库。Windows 沙箱禁止查询父进程时可用 `dotnet test -p:_MSTestEnableParentProcessQuery=false`。
 
 ## 架构（3 个项目）
 
@@ -47,7 +47,13 @@ dotnet ef migrations add <名称> --project TaTaTask
 
 EF Core 工具版本固定在 `.config/dotnet-tools.json`（当前为 `dotnet-ef` 10.0.9）。
 
-九张表：`Users`、`TodoItems`、`TodoSteps`、`FeedbackItems`、`FeedbackReplies`、`ScheduleRules`、`ScheduleRuleSteps`、`ScheduleEntries`、`ScheduleEntrySteps`。
+十张表：`Users`、`TodoItems`、`TodoSteps`、`FeedbackItems`、`FeedbackReplies`、`ScheduleRules`、`ScheduleRuleSteps`、`ScheduleEntries`、`ScheduleEntrySteps`、`ApiTokens`。
+
+## 外部接入
+
+- `/api/v1` 与 `/mcp` 共用 `ExternalApiService`，使用用户访问令牌认证，支持只读/读写权限；网页登录仍用 Cookie。两种认证不会相互授权。
+- 用户在 `/integrations` 创建/撤销令牌；数据库只存摘要。工具和接口必须保持用户隔离，并复用现有业务规则。
+- 跨站浏览器来源通过 `ExternalAccess:AllowedOrigins` 精确配置。接入和范围详见 `docs/external-access.md`。
 
 ## 业务规则（不显而易见）
 
