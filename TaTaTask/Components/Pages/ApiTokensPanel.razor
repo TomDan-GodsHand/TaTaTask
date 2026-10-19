@@ -1,0 +1,201 @@
+@using Microsoft.EntityFrameworkCore
+@using TaTaTask.Api
+@using TaTaTask.Data
+@using TaTaTask.Models.Dtos.Api
+@using TaTaTask.Services
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IServiceScopeFactory ScopeFactory
+@inject AuthenticationStateProvider Authentication
+@inject IJSRuntime JS
+
+<MudText Typo="Typo.subtitle1" Class="mb-1"><b>外部接入令牌</b></MudText>
+<MudText Typo="Typo.caption" Class="mb-3">
+    用于其他网页与 AI agent 调用 <code>/api/v1</code> 和 <code>/mcp</code>。
+    明文只在创建后显示一次；令牌只能访问你自己的数据。
+</MudText>
+
+@if (_createdSecret is not null)
+{
+    <MudAlert Severity="Severity.Success" Dense="true" Class="mb-4" ShowCloseIcon="true"
+              CloseIconClicked="@(() => _createdSecret = null)">
+        <div class="mb-2">已创建令牌「@_createdName」。请立即复制保存，关闭后无法再次查看：</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <MudTextField T="string" Value="@_createdSecret" ReadOnly="true" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Label="完整访问令牌" />
+            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" OnClick="CopySecretAsync" Color="Color.Primary" title="复制令牌" />
+        </div>
+        @if (_copied)
+        {
+            <MudText Typo="Typo.caption">已复制令牌</MudText>
+        }
+    </MudAlert>
+}
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4" ShowCloseIcon="true"
+              CloseIconClicked="@(() => _error = null)">@_error</MudAlert>
+}
+
+<MudPaper Outlined="true" Class="pa-4 mb-4">
+    <div class="d-flex flex-wrap gap-3 align-center">
+        <MudTextField @bind-Value="_name" Label="令牌名称" Placeholder="例如 Codex、家庭网页" Immediate="true"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1" />
+        <MudSwitch @bind-Value="_canWrite" Color="Color.Primary" Label="允许写入" />
+        <MudNumericField @bind-Value="_expireDays" Label="有效天数（0 = 永不过期）" Min="0" Max="365" Immediate="true"
+                         Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudButton OnClick="CreateAsync" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">
+            创建令牌
+        </MudButton>
+    </div>
+</MudPaper>
+
+@if (_tokens.Count > 0)
+{
+    <MudSimpleTable Hover="true" Dense="true">
+        <thead>
+            <tr>
+                <th>令牌</th>
+                <th>权限</th>
+                <th>创建</th>
+                <th>最后使用</th>
+                <th>过期</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var token in _tokens)
+            {
+                <tr>
+                    <td>
+                        <div>
+                            @token.Name
+                            @if (!token.IsActive)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default">已失效</MudChip>
+                            }
+                        </div>
+                        <MudText Typo="Typo.caption">@token.Prefix…</MudText>
+                    </td>
+                    <td>@(token.CanWrite ? "读写" : "只读")</td>
+                    <td>@token.CreatedAt.ToString("MM-dd HH:mm")</td>
+                    <td>@(token.LastUsedAt?.ToString("MM-dd HH:mm") ?? "从未")</td>
+                    <td>@(token.ExpiresAt?.ToString("yyyy-MM-dd") ?? "永不")</td>
+                    <td>
+                        @if (token.IsActive)
+                        {
+                            <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text"
+                                       OnClick="@(() => RevokeAsync(token))">吊销</MudButton>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+}
+else
+{
+    <MudText Typo="Typo.body2" Class="mt-2">还没有令牌。</MudText>
+}
+
+@code {
+    private List<ApiTokenDto> _tokens = new();
+    private string? _name;
+    private bool _canWrite;
+    private int _expireDays = 90;
+    private bool _busy;
+    private bool _copied;
+    private string? _error;
+    private string? _createdSecret;
+    private string? _createdName;
+    private int _userId;
+    private TimeZoneInfo _timeZone = TimeZoneInfo.Utc;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Authentication.GetAuthenticationStateAsync();
+        if (!int.TryParse(state.User.FindFirstValue(ClaimTypes.NameIdentifier), out _userId)) return;
+        using var scope = ScopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var id = await db.Users.Where(u => u.Id == _userId).Select(u => u.TimeZoneId).SingleAsync();
+        _timeZone = UserTime.Resolve(id);
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (_userId == 0) return;
+        using var scope = ScopeFactory.CreateScope();
+        _tokens = await scope.ServiceProvider.GetRequiredService<ApiTokenService>().ListAsync(_userId, _timeZone);
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_busy || _userId == 0) return;
+        _error = null;
+        _createdSecret = null;
+        _copied = false;
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "请填写令牌名称";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            if (_expireDays is < 0 or > 365) throw ApiException.BadRequest("有效天数需为 0–365");
+            using var scope = ScopeFactory.CreateScope();
+            var tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
+            var created = await tokens.CreateAsync(_userId, new CreateApiTokenRequest
+            {
+                Name = _name,
+                CanWrite = _canWrite,
+                ExpiresAt = _expireDays > 0 ? DateTimeOffset.UtcNow.AddDays(_expireDays) : null,
+            }, _timeZone);
+
+            _createdSecret = created.Secret;
+            _createdName = created.Token.Name;
+            _name = null;
+            _canWrite = false;
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RevokeAsync(ApiTokenDto token)
+    {
+        if (_busy || _userId == 0) return;
+        _busy = true;
+        _createdSecret = null;
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<ApiTokenService>().RevokeAsync(_userId, token.Id);
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task CopySecretAsync()
+    {
+        if (_createdSecret is null) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _createdSecret);
+            _copied = true;
+        }
+        catch
+        {
+            _error = "剪贴板不可用，请手动选择上方完整令牌并复制";
+        }
+    }
+}

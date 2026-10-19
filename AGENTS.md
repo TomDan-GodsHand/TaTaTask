@@ -51,9 +51,13 @@ EF Core 工具版本固定在 `.config/dotnet-tools.json`（当前为 `dotnet-ef
 
 ## 外部接入
 
-- `/api/v1` 与 `/mcp` 共用 `ExternalApiService`，使用用户访问令牌认证，支持只读/读写权限；网页登录仍用 Cookie。两种认证不会相互授权。
-- 用户在 `/integrations` 创建/撤销令牌；数据库只存摘要。工具和接口必须保持用户隔离，并复用现有业务规则。
-- 跨站浏览器来源通过 `ExternalAccess:AllowedOrigins` 精确配置。接入和范围详见 `docs/external-access.md`。
+- 入口 `/api/v1`（分页 REST）、`/mcp`（无状态 Streamable HTTP）、`/openapi/v1.json`；实现位于 `TaTaTask/Api/`、`Controllers/Api/`。
+- 默认认证仍为 Cookie；外部入口显式使用 Bearer 策略。不能让令牌通过旧网页 API 绕过 read/write scope。
+- `TaskApiService` / `ScheduleApiService` 复用现有业务服务，外部写操作统一经过 `ApiCommandExecutor`：一个事务，提交后再向同账号 SignalR 分组通知。
+- **外部 DTO 时间为 DateTimeOffset**，转换位于 `ApiTime`，与内部 DTO 的用户墙钟时间约定不同。不要混用。
+- 设置页与 `/integrations` 共享 `ApiTokensPanel`，支持可选过期、最后使用时间与吊销。CLI 为 `--create-api-token` / `--list-api-tokens`。令牌表只存 SHA-256 摘要，保留原迁移，修改以增量迁移实现。
+- 同机 Caddy + EdgeOne + IPv6 回源：`ReverseProxy=true`，应用监听回环 HTTP；恢复受信 Caddy 的 Proto/Host，MCP 按公网来源检查，动态响应 no-store。容器/内网代理显式配置 `ReverseProxyOptions:KnownProxies/KnownNetworks`。
+- 接口与 CORS 见 `docs/external-api.md`；代理配置和双栈验收见 `docs/caddy-edgeone.md`。
 
 ## 业务规则（不显而易见）
 

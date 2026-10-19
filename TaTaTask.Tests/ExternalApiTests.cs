@@ -18,8 +18,8 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using TaTaTask.Data;
-using TaTaTask.External;
-using TaTaTask.Models.Dtos;
+using TaTaTask.Api;
+using TaTaTask.Models.Dtos.Api;
 using TaTaTask.Models.Entities;
 using TaTaTask.Models.Enums;
 using Xunit;
@@ -58,10 +58,10 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         db.Users.AddRange(owner, other);
         await db.SaveChangesAsync();
         OwnerId = owner.Id;
-        var store = scope.ServiceProvider.GetRequiredService<ApiTokenStore>();
-        Writer = await store.CreateAsync(owner.Id, "writer", true, 1);
-        Reader = await store.CreateAsync(owner.Id, "reader", false, 1);
-        Other = await store.CreateAsync(other.Id, "other", true, 1);
+        var store = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
+        Writer = (await store.CreateAsync(owner.Id, new CreateApiTokenRequest { Name = "writer", CanWrite = true, ExpiresAt = DateTimeOffset.UtcNow.AddDays(1) }, TimeZoneInfo.Utc)).Secret;
+        Reader = (await store.CreateAsync(owner.Id, new CreateApiTokenRequest { Name = "reader", CanWrite = false, ExpiresAt = DateTimeOffset.UtcNow.AddDays(1) }, TimeZoneInfo.Utc)).Secret;
+        Other = (await store.CreateAsync(other.Id, new CreateApiTokenRequest { Name = "other", CanWrite = true, ExpiresAt = DateTimeOffset.UtcNow.AddDays(1) }, TimeZoneInfo.Utc)).Secret;
     }
 
     public HttpClient Client(string? token = null)
@@ -103,19 +103,19 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     }
 }
 
-public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixture>
+public sealed partial class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixture>
 {
-    private static async Task<TodoItemDto> Create(HttpClient client, string title, params string[] steps)
+    private static async Task<TaskDto> Create(HttpClient client, string title, params string[] steps)
     {
-        var response = await client.PostAsJsonAsync("/api/v1/tasks", new CreateTodoRequest { Title = title, Steps = steps.ToList() });
+        var response = await client.PostAsJsonAsync("/api/v1/tasks", new CreateTaskRequest { Title = title, Steps = steps.ToList() });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        return (await response.Content.ReadFromJsonAsync<TodoItemDto>())!;
+        return (await response.Content.ReadFromJsonAsync<TaskDto>())!;
     }
 
     [Theory]
     [InlineData("/api/v1/tasks")]
     [InlineData("/mcp")]
-    [InlineData("/openapi/external.json")]
+    [InlineData("/openapi/v1.json")]
     public async Task Anonymous_gets_401_without_html_or_login_redirect(string path)
     {
         using var client = fixture.Client();
@@ -141,10 +141,10 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
     public async Task Tokens_are_hashed_and_revocation_and_expiration_take_effect_on_next_request()
     {
         using var scope = fixture.Services.CreateScope();
-        var store = scope.ServiceProvider.GetRequiredService<ApiTokenStore>();
+        var store = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var raw = await store.CreateAsync(fixture.OwnerId, "revoke", true, 1);
-        var record = await db.ApiTokens.AsNoTracking().SingleAsync(t => t.TokenHash == ExternalAuth.Hash(raw));
+        var raw = (await store.CreateAsync(fixture.OwnerId, new CreateApiTokenRequest { Name = "revoke", CanWrite = true, ExpiresAt = DateTimeOffset.UtcNow.AddDays(1) }, TimeZoneInfo.Utc)).Secret;
+        var record = await db.ApiTokens.AsNoTracking().SingleAsync(t => t.TokenHash == ApiTokenService.Hash(raw));
         Assert.NotEqual(raw, record.TokenHash);
         Assert.Equal(64, record.TokenHash.Length);
         using var client = fixture.Client(raw);
@@ -154,8 +154,8 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
         await store.RevokeAsync(fixture.OwnerId, record.Id);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/me")).StatusCode);
 
-        raw = await store.CreateAsync(fixture.OwnerId, "expire", false, 1);
-        await db.ApiTokens.Where(t => t.TokenHash == ExternalAuth.Hash(raw))
+        raw = (await store.CreateAsync(fixture.OwnerId, new CreateApiTokenRequest { Name = "expire", CanWrite = false, ExpiresAt = DateTimeOffset.UtcNow.AddDays(1) }, TimeZoneInfo.Utc)).Secret;
+        await db.ApiTokens.Where(t => t.TokenHash == ApiTokenService.Hash(raw))
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.ExpiresAt, DateTime.UtcNow.AddSeconds(-1)));
         using var expired = fixture.Client(raw);
         Assert.Equal(HttpStatusCode.Unauthorized, (await expired.GetAsync("/api/v1/me")).StatusCode);
@@ -170,22 +170,22 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
     }
 
     [Fact]
-    public async Task Task_crud_is_isolated_by_owner_and_preserves_local_wall_clock()
+    public async Task Task_crud_is_isolated_by_owner_and_preserves_exact_offset_in_utc()
     {
         using var writer = fixture.Client(fixture.Writer);
         using var other = fixture.Client(fixture.Other);
         var task = await Create(writer, "CRUD");
         Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync($"/api/v1/tasks/{task.Id}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await other.DeleteAsync($"/api/v1/tasks/{task.Id}")).StatusCode);
-        var localDue = new DateTime(2027, 1, 2, 18, 30, 0, DateTimeKind.Unspecified);
-        var response = await writer.PutAsJsonAsync($"/api/v1/tasks/{task.Id}", new UpdateTodoRequest
+        var localDue = new DateTimeOffset(2027, 1, 2, 18, 30, 0, TimeSpan.FromHours(8));
+        var response = await writer.PatchAsJsonAsync($"/api/v1/tasks/{task.Id}", new PatchTaskRequest
         {
             Title = "updated", Priority = 3, DueDate = localDue,
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var updated = (await response.Content.ReadFromJsonAsync<TodoItemDto>())!;
+        var updated = (await response.Content.ReadFromJsonAsync<TaskDto>())!;
         Assert.Equal(localDue, updated.DueDate);
-        Assert.Equal(DateTimeKind.Unspecified, updated.DueDate!.Value.Kind);
+        Assert.Equal(TimeSpan.FromHours(8), updated.DueDate!.Value.Offset);
         using var scope = fixture.Services.CreateScope();
         var stored = await scope.ServiceProvider.GetRequiredService<AppDbContext>().TodoItems.AsNoTracking().SingleAsync(t => t.Id == task.Id);
         Assert.Equal(new DateTime(2027, 1, 2, 10, 30, 0), stored.DueDate);
@@ -200,16 +200,15 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
         var prefix = Guid.NewGuid().ToString("N");
         foreach (var tag in new[] { prefix, prefix, prefix + "suffix" })
         {
-            var response = await client.PostAsJsonAsync("/api/v1/tasks", new { title = prefix, tags = tag, priority = 2 });
+            var response = await client.PostAsJsonAsync("/api/v1/tasks", new { title = prefix, tags = new[] { tag }, priority = 2 });
             Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         }
-        var result = (await client.GetFromJsonAsync<PagedResult<TodoItemDto>>($"/api/v1/tasks?tag={prefix}&pageSize=1&sort=created"))!;
-        var next = (await client.GetFromJsonAsync<PagedResult<TodoItemDto>>($"/api/v1/tasks?tag={prefix}&pageSize=1&page=2&sort=created"))!;
+        var result = (await client.GetFromJsonAsync<PagedResult<TaskDto>>($"/api/v1/tasks?tag={prefix}&pageSize=1&sort=created"))!;
+        var next = (await client.GetFromJsonAsync<PagedResult<TaskDto>>($"/api/v1/tasks?tag={prefix}&pageSize=1&page=2&sort=created"))!;
         Assert.Equal(2, result.Total);
         Assert.Single(result.Items);
-        Assert.Equal("Asia/Shanghai", result.TimeZoneId);
         Assert.NotEqual(result.Items[0].Id, next.Items[0].Id);
-        Assert.Empty((await client.GetFromJsonAsync<PagedResult<TodoItemDto>>($"/api/v1/tasks?tag={prefix}&page=3&pageSize=1"))!.Items);
+        Assert.Empty((await client.GetFromJsonAsync<PagedResult<TaskDto>>($"/api/v1/tasks?tag={prefix}&page=3&pageSize=1"))!.Items);
     }
 
     [Theory]
@@ -232,31 +231,31 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
         using var client = fixture.Client(fixture.Writer);
         var task = await Create(client, "steps", "first");
         var statusUrl = $"/api/v1/tasks/{task.Id}/status";
-        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync(statusUrl, new { status = 4 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync(statusUrl, new { status = "done" })).StatusCode);
         var url = $"/api/v1/tasks/{task.Id}/steps/{task.Steps[0].Id}/completion";
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync(url, new { })).StatusCode);
         for (var i = 0; i < 2; i++)
         {
             var response = await client.PutAsJsonAsync(url, new { completed = true });
-            var updated = (await response.Content.ReadFromJsonAsync<TodoItemDto>())!;
+            var updated = (await response.Content.ReadFromJsonAsync<TaskDto>())!;
             Assert.True(updated.Steps[0].IsCompleted);
-            Assert.Equal(TodoStatus.InProgress, updated.Status);
+            Assert.Equal("inProgress", updated.Status);
         }
-        Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync(statusUrl, new { status = 5, frozenReason = "waiting" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(statusUrl, new { status = "frozen", frozenReason = "waiting" })).StatusCode);
         var unfrozen = await client.PostAsync($"/api/v1/tasks/{task.Id}/unfreeze", null);
-        Assert.Equal(TodoStatus.InProgress, (await unfrozen.Content.ReadFromJsonAsync<TodoItemDto>())!.Status);
-        Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync(statusUrl, new { status = 4 })).StatusCode);
+        Assert.Equal("inProgress", (await unfrozen.Content.ReadFromJsonAsync<TaskDto>())!.Status);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(statusUrl, new { status = "done" })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsync($"/api/v1/tasks/{task.Id}/archive", null)).StatusCode);
     }
 
     [Fact]
-    public async Task Invalid_creation_does_not_persist_and_UTC_input_is_rejected()
+    public async Task Invalid_creation_does_not_persist()
     {
         using var client = fixture.Client(fixture.Writer);
         foreach (var input in new object[]
         {
-            new { title = " " }, new { title = "bad", priority = 9 }, new { title = "bad", dueDate = "2027-01-02T00:00:00Z" },
-            new { title = "bad", status = 4, steps = new[] { "incomplete" } },
+            new { title = " " }, new { title = "bad", priority = 9 }, new { title = "bad", dueDate = "garbage" },
+            new { title = "bad", status = "done", steps = new[] { "incomplete" } },
         })
             Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/v1/tasks", input)).StatusCode);
     }
@@ -265,20 +264,20 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
     public async Task Schedule_rules_crud_and_today_materialization_work_without_duplicates()
     {
         using var client = fixture.Client(fixture.Writer);
-        var request = new SaveScheduleRuleRequest
+        var request = new SaveScheduleRuleApiRequest
         {
-            Title = "daily", DaysOfWeek = 127, Mode = ScheduleRuleMode.Generate,
-            StartTime = new TimeOnly(9, 0), EndTime = new TimeOnly(10, 0), Steps = ["one"],
+            Title = "daily", DaysOfWeek = 127, Mode = "generate",
+            StartTime = "09:00", EndTime = "10:00", Steps = ["one"],
         };
         var response = await client.PostAsJsonAsync("/api/v1/schedule/rules", request);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var rule = (await response.Content.ReadFromJsonAsync<ScheduleRuleDto>())!;
+        var rule = (await response.Content.ReadFromJsonAsync<ScheduleRuleApiDto>())!;
         using var other = fixture.Client(fixture.Other);
         Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync($"/api/v1/schedule/rules/{rule.Id}")).StatusCode);
         request.Title = "updated daily";
         Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync($"/api/v1/schedule/rules/{rule.Id}", request)).StatusCode);
-        var first = (await client.GetFromJsonAsync<TodayScheduleDto>("/api/v1/schedule/today"))!;
-        var second = (await client.GetFromJsonAsync<TodayScheduleDto>("/api/v1/schedule/today"))!;
+        var first = (await client.GetFromJsonAsync<TodayScheduleApiDto>("/api/v1/schedule/today"))!;
+        var second = (await client.GetFromJsonAsync<TodayScheduleApiDto>("/api/v1/schedule/today"))!;
         Assert.Single(first.Entries, e => e.RuleId == rule.Id);
         Assert.Equal(JsonSerializer.Serialize(first.Entries), JsonSerializer.Serialize(second.Entries));
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/v1/schedule/rules/{rule.Id}")).StatusCode);
@@ -290,12 +289,13 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
         using var client = fixture.Client(fixture.Writer);
         foreach (var origin in new[] { "https://portal.example", "https://untrusted.example" })
         {
-            using var request = new HttpRequestMessage(HttpMethod.Options, "/api/v1/tasks");
+            using var request = new HttpRequestMessage(HttpMethod.Options, "/api/v1/tasks/1");
             request.Headers.Add("Origin", origin);
-            request.Headers.Add("Access-Control-Request-Method", "POST");
+            request.Headers.Add("Access-Control-Request-Method", "PATCH");
             request.Headers.Add("Access-Control-Request-Headers", "authorization,content-type");
             var response = await client.SendAsync(request);
-            Assert.Equal(origin == "https://portal.example", response.Headers.Contains("Access-Control-Allow-Origin"));
+            Assert.True((origin == "https://portal.example") == response.Headers.Contains("Access-Control-Allow-Origin"),
+                $"Origin={origin}; status={response.StatusCode}; headers={response.Headers}; body={await response.Content.ReadAsStringAsync()}");
         }
         using var mcpRequest = new HttpRequestMessage(HttpMethod.Post, "/mcp");
         mcpRequest.Headers.Add("Origin", "https://untrusted.example");
@@ -307,7 +307,7 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
     public async Task Openapi_contains_only_external_routes_and_Bearer_security()
     {
         using var client = fixture.Client(fixture.Reader);
-        var json = await client.GetStringAsync("/openapi/external.json");
+        var json = await client.GetStringAsync("/openapi/v1.json");
         using var document = JsonDocument.Parse(json);
         Assert.All(document.RootElement.GetProperty("paths").EnumerateObject(), p => Assert.StartsWith("/api/v1/", p.Name));
         Assert.True(document.RootElement.GetProperty("components").GetProperty("securitySchemes").TryGetProperty("Bearer", out _));
@@ -337,9 +337,9 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
     {
         using var client = fixture.Client(fixture.Writer);
         var title = Guid.NewGuid().ToString("N");
-        var response = await client.PostAsJsonAsync("/api/v1/tasks", new { title, status = 4 });
+        var response = await client.PostAsJsonAsync("/api/v1/tasks", new { title, status = "done" });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var task = (await response.Content.ReadFromJsonAsync<TodoItemDto>())!;
+        var task = (await response.Content.ReadFromJsonAsync<TaskDto>())!;
         Assert.NotNull(task.DoneAt);
         using (var scope = fixture.Services.CreateScope())
         {
@@ -348,9 +348,9 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
                 .ExecuteUpdateAsync(s => s.SetProperty(t => t.DoneAt, DateTime.UtcNow.AddDays(-8)));
         }
         using var reader = fixture.Client(fixture.Reader);
-        var archived = (await reader.GetFromJsonAsync<PagedResult<TodoItemDto>>($"/api/v1/tasks?archived=true&q={title}"))!;
+        var archived = (await reader.GetFromJsonAsync<PagedResult<TaskDto>>($"/api/v1/tasks?archived=true&q={title}"))!;
         Assert.True(Assert.Single(archived.Items).IsArchived);
-        var all = (await reader.GetFromJsonAsync<PagedResult<TodoItemDto>>($"/api/v1/tasks?archived=&q={title}"))!;
+        var all = (await reader.GetFromJsonAsync<PagedResult<TaskDto>>($"/api/v1/tasks?archived=&q={title}"))!;
         Assert.Equal(1, all.Total);
     }
 
@@ -364,7 +364,7 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
         Assert.Contains("/mcp", html);
         Assert.Contains("writer", html);
         Assert.DoesNotContain(fixture.Writer, html);
-        Assert.DoesNotContain(ExternalAuth.Hash(fixture.Writer), html);
+        Assert.DoesNotContain(ApiTokenService.Hash(fixture.Writer), html);
     }
 
     private async Task<McpClient> Mcp(string token)
@@ -407,12 +407,12 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
         Assert.DoesNotContain("service", tools.Single(t => t.Name == "create_task").JsonSchema.ToString());
         var created = await mcp.CallToolAsync("create_task", new Dictionary<string, object?>
         {
-            ["request"] = new { title = "from MCP", steps = new[] { "one" } },
+            ["title"] = "from MCP", ["steps"] = new[] { "one" },
         });
         Assert.False(created.IsError == true);
         var id = created.StructuredContent!.Value.GetProperty("id").GetInt32();
         using var http = fixture.Client(fixture.Writer);
-        Assert.Equal("from MCP", (await http.GetFromJsonAsync<TodoItemDto>($"/api/v1/tasks/{id}"))!.Title);
+        Assert.Equal("from MCP", (await http.GetFromJsonAsync<TaskDto>($"/api/v1/tasks/{id}"))!.Title);
         var invalid = await mcp.CallToolAsync("list_tasks", new Dictionary<string, object?> { ["pageSize"] = 101 });
         Assert.True(invalid.IsError);
         Assert.Equal(400, invalid.StructuredContent!.Value.GetProperty("status").GetInt32());
@@ -426,7 +426,7 @@ public sealed class ExternalApiTests(ApiFixture fixture) : IClassFixture<ApiFixt
     public async Task MCP_read_only_token_cannot_call_write_tools_and_invalid_token_is_rejected()
     {
         await using var mcp = await Mcp(fixture.Reader);
-        var result = await mcp.CallToolAsync("create_task", new Dictionary<string, object?> { ["request"] = new { title = "forbidden MCP" } });
+        var result = await mcp.CallToolAsync("create_task", new Dictionary<string, object?> { ["title"] = "forbidden MCP" });
         Assert.True(result.IsError);
         Assert.Equal(403, result.StructuredContent!.Value.GetProperty("status").GetInt32());
         using var invalid = fixture.Client("ttt_" + new string('0', 64));

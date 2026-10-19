@@ -551,7 +551,7 @@ public partial class ServerTodoService : ITodoService
         return dto;
     }
 
-    private async Task AutoArchiveAsync()
+    internal async Task AutoArchiveAsync()
     {
         var cutoff = DateTime.UtcNow.AddDays(-7);
         var stale = await _db.TodoItems

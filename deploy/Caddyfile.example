@@ -1,0 +1,12 @@
+# tasks.example.com: 浏览器/agent 访问的公网域名（接入 EdgeOne）。
+# home6.example.com: 只解析到家中 IPv6 的回源域名。
+# EdgeOne 以 HTTPS 回源，回源 Host 与 TLS SNI 使用 home6.example.com。
+home6.example.com {
+    reverse_proxy 127.0.0.1:5000 {
+        # 应用看到公网访问域名，避免回源域名导致重定向或 MCP Origin 校验失败。
+        header_up Host tasks.example.com
+        header_up X-Forwarded-Host tasks.example.com
+        header_up X-Forwarded-Proto https
+        flush_interval -1
+    }
+}

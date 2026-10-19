@@ -29,7 +29,10 @@ namespace TaTaTask.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("ExpiresAt")
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastUsedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
