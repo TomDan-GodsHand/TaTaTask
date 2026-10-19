@@ -10,6 +10,7 @@ public class AppDbContext : DbContext
     }
 
     public DbSet<User> Users => Set<User>();
+    public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
     public DbSet<TodoItem> TodoItems => Set<TodoItem>();
     public DbSet<TodoStep> TodoSteps => Set<TodoStep>();
     public DbSet<FeedbackItem> FeedbackItems => Set<FeedbackItem>();
@@ -23,6 +24,16 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<ApiToken>(entity =>
+        {
+            entity.Property(t => t.Name).HasMaxLength(80).IsRequired();
+            entity.Property(t => t.TokenHash).HasMaxLength(64).IsRequired();
+            entity.Property(t => t.Prefix).HasMaxLength(16).IsRequired();
+            entity.HasIndex(t => t.TokenHash).IsUnique();
+            entity.HasOne(t => t.User).WithMany().HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
 
         modelBuilder.Entity<User>(entity =>
         {

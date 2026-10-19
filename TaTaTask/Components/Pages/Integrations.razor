@@ -1,0 +1,10 @@
+@page "/integrations"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>外部接入</PageTitle>
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-8 mb-8">
+    <MudPaper Elevation="3" Class="pa-6">
+        <ApiTokensPanel />
+    </MudPaper>
+</MudContainer>

@@ -14,7 +14,7 @@ dotnet build                                           # 构建全部三个项�
 dotnet publish TaTaTask -c Release -r linux-x64 --self-contained -o publish
 ```
 
-本仓库无测试。
+集成测试位于 `TaTaTask.Tests/`，运行 `dotnet test`。测试使用构建输出目录下的独立临时 SQLite 数据库，不使用业务数据库。Windows 沙箱禁止查询父进程时可用 `dotnet test -p:_MSTestEnableParentProcessQuery=false`。
 
 ## 架构（3 个项目）
 
@@ -47,7 +47,17 @@ dotnet ef migrations add <名称> --project TaTaTask
 
 EF Core 工具版本固定在 `.config/dotnet-tools.json`（当前为 `dotnet-ef` 10.0.9）。
 
-九张表：`Users`、`TodoItems`、`TodoSteps`、`FeedbackItems`、`FeedbackReplies`、`ScheduleRules`、`ScheduleRuleSteps`、`ScheduleEntries`、`ScheduleEntrySteps`。
+十张表：`Users`、`TodoItems`、`TodoSteps`、`FeedbackItems`、`FeedbackReplies`、`ScheduleRules`、`ScheduleRuleSteps`、`ScheduleEntries`、`ScheduleEntrySteps`、`ApiTokens`。
+
+## 外部接入
+
+- 入口 `/api/v1`（分页 REST）、`/mcp`（无状态 Streamable HTTP）、`/openapi/v1.json`；实现位于 `TaTaTask/Api/`、`Controllers/Api/`。
+- 默认认证仍为 Cookie；外部入口显式使用 Bearer 策略。不能让令牌通过旧网页 API 绕过 read/write scope。
+- `TaskApiService` / `ScheduleApiService` 复用现有业务服务，外部写操作统一经过 `ApiCommandExecutor`：一个事务，提交后再向同账号 SignalR 分组通知。
+- **外部 DTO 时间为 DateTimeOffset**，转换位于 `ApiTime`，与内部 DTO 的用户墙钟时间约定不同。不要混用。
+- 设置页与 `/integrations` 共享 `ApiTokensPanel`，支持可选过期、最后使用时间与吊销。CLI 为 `--create-api-token` / `--list-api-tokens`。令牌表只存 SHA-256 摘要，保留原迁移，修改以增量迁移实现。
+- 同机 Caddy + EdgeOne + IPv6 回源：`ReverseProxy=true`，应用监听回环 HTTP；恢复受信 Caddy 的 Proto/Host，MCP 按公网来源检查，动态响应 no-store。容器/内网代理显式配置 `ReverseProxyOptions:KnownProxies/KnownNetworks`。
+- 接口与 CORS 见 `docs/external-api.md`；代理配置和双栈验收见 `docs/caddy-edgeone.md`。
 
 ## 业务规则（不显而易见）
 

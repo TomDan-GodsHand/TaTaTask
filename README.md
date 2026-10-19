@@ -4,6 +4,8 @@
 
 <h1 align="center">TaTaTask</h1>
 
+外部网页与 AI agent 接入：参见 [Web API / MCP 接入说明](docs/external-api.md)。
+
 <p align="center">
   <strong>自托管的看板式个人任务管理应用</strong><br>
   简单、快速、隐私优先。你的任务你做主。
@@ -195,7 +197,7 @@ chmod +x uninstall.sh
 
 ### 反向代理
 
-生产环境建议 nginx/Caddy 反代，应用只监听 HTTP。
+生产环境建议 nginx/Caddy 反代，应用只监听 HTTP。家庭 IPv6 源站经 Caddy + 腾讯云 EdgeOne 提供公网双栈访问，见 [配置与验收](docs/caddy-edgeone.md)。
 
 **1. 在 `appsettings.Production.json` 中开启反代模式：**
 
@@ -204,14 +206,14 @@ chmod +x uninstall.sh
   "ReverseProxy": true,
   "Kestrel": {
     "Endpoints": {
-      "Https": null
+      "Http": { "Url": "http://127.0.0.1:5000" }
     }
   }
 }
 ```
 
-- `ReverseProxy: true` → 信任 `X-Forwarded-*` 头，禁用 HTTPS 重定向
-- `Https: null` → Kestrel 不再监听 HTTPS（证书由反代层处理）
+- `ReverseProxy: true` → 仅从受信代理读取 `X-Forwarded-For/Proto/Host`，禁用 HTTPS 重定向；同机 Caddy 的回环地址默认受信
+- 用上面的内容替换生产环境配置，移除原 `Https` 端点与证书项；证书由反代层处理。完整示例见 `deploy/appsettings.Caddy.json`。
 
 **2. nginx 反代配置示例：**
 

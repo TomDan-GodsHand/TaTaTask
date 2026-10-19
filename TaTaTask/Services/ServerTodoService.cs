@@ -7,7 +7,7 @@ using TaTaTask.Models.Enums;
 
 namespace TaTaTask.Services;
 
-public class ServerTodoService : ITodoService
+public partial class ServerTodoService : ITodoService
 {
     private readonly AppDbContext _db;
     private readonly ICurrentUser _current;
@@ -551,7 +551,7 @@ public class ServerTodoService : ITodoService
         return dto;
     }
 
-    private async Task AutoArchiveAsync()
+    internal async Task AutoArchiveAsync()
     {
         var cutoff = DateTime.UtcNow.AddDays(-7);
         var stale = await _db.TodoItems
